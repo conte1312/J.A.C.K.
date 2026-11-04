@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage*
+
+# Ambiente e configurazione locale (mantieni versionabile .env.example)
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Database SQLite locale e journal
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*-journal
+*-wal
+*-shm
