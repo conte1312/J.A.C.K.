@@ -80,3 +80,4 @@ Non sono implementati provider AI reali, gestione di API key, account o abboname
 2. Progettare in milestone separate l'integrazione sicura dei provider e delle credenziali con macOS Keychain.
 3. Valutare esportazione e backup locali della memoria.
 4. Preparare packaging, firma e distribuzione macOS dopo le verifiche di sicurezza e qualità.
+# J.A.C.K.
