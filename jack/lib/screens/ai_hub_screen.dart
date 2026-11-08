@@ -209,7 +209,7 @@ class _PageHeader extends StatelessWidget {
 }
 
 class _ProviderOrderNotice extends StatelessWidget {
-  const _ProviderOrderNotice({super.key});
+  const _ProviderOrderNotice();
 
   @override
   Widget build(BuildContext context) {

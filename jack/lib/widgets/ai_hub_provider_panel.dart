@@ -134,9 +134,7 @@ class _AiHubProviderPanelState extends State<AiHubProviderPanel> {
   }
 
   Future<void> _setProviderEnabled(String providerId, bool enabled) async {
-    await _run(
-      () => widget.gateway.setProviderEnabled(providerId, enabled),
-    );
+    await _run(() => widget.gateway.setProviderEnabled(providerId, enabled));
   }
 
   Future<void> _selectProviderAndModel(
@@ -280,10 +278,7 @@ class _AiHubProviderPanelState extends State<AiHubProviderPanel> {
     );
   }
 
-  String _providerDisplayName(
-    AiMultiProviderConfiguration config,
-    String id,
-  ) {
+  String _providerDisplayName(AiMultiProviderConfiguration config, String id) {
     for (final p in config.providers) {
       if (p.id == id) return p.name;
     }
@@ -297,7 +292,6 @@ class _OrderChip extends StatelessWidget {
     required this.name,
     required this.isEnabled,
     required this.isFirst,
-    super.key,
   });
 
   final String id;
@@ -342,10 +336,7 @@ class _OrderChip extends StatelessWidget {
           if (!isEnabled)
             const Text(
               ' · OFF',
-              style: TextStyle(
-                color: JackPalette.dim,
-                fontSize: 7,
-              ),
+              style: TextStyle(color: JackPalette.dim, fontSize: 7),
             ),
         ],
       ),
@@ -363,7 +354,6 @@ class _ProviderCard extends StatelessWidget {
     required this.onTestConnection,
     required this.onEnabledChanged,
     required this.onSelect,
-    super.key,
   });
 
   final AiProviderInfo provider;
@@ -381,6 +371,13 @@ class _ProviderCard extends StatelessWidget {
 
   String get _freeTierLabel {
     return provider.isFreeTierAvailable ? 'Piano gratuito' : 'Nessun gratuito';
+  }
+
+  String? get _selectedModelId {
+    for (final model in provider.models) {
+      if (model.selected) return model.id;
+    }
+    return null;
   }
 
   @override
@@ -460,10 +457,7 @@ class _ProviderCard extends StatelessWidget {
                     ),
                     Text(
                       '$_typeLabel · ${provider.requiresCredential ? 'Chiave API' : 'Nessuna chiave'} · $_freeTierLabel',
-                      style: TextStyle(
-                        color: JackPalette.muted,
-                        fontSize: 8,
-                      ),
+                      style: TextStyle(color: JackPalette.muted, fontSize: 8),
                     ),
                   ],
                 ),
@@ -485,10 +479,7 @@ class _ProviderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Provider disponibile',
-                    style: TextStyle(
-                      color: JackPalette.green,
-                      fontSize: 8,
-                    ),
+                    style: TextStyle(color: JackPalette.green, fontSize: 8),
                   ),
                 ),
               ],
@@ -501,10 +492,7 @@ class _ProviderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Quota esaurita',
-                    style: TextStyle(
-                      color: JackPalette.amber,
-                      fontSize: 8,
-                    ),
+                    style: TextStyle(color: JackPalette.amber, fontSize: 8),
                   ),
                 ),
               ],
@@ -517,10 +505,7 @@ class _ProviderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     provider.lastError!,
-                    style: TextStyle(
-                      color: JackPalette.red,
-                      fontSize: 8,
-                    ),
+                    style: TextStyle(color: JackPalette.red, fontSize: 8),
                   ),
                 ),
               ],
@@ -537,15 +522,29 @@ class _ProviderCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            for (final model in provider.models)
-              _ProviderModelRow(
-                model: model,
-                providerId: provider.id,
-                busy: busy,
-                isSelected: model.selected,
-                onSelect: () => onSelect(model.id),
-                onEnabledChanged: (enabled) => onEnabledChanged(enabled),
+            RadioGroup<String>(
+              groupValue: _selectedModelId,
+              onChanged: (modelId) {
+                if (busy || modelId == null) return;
+                final model = provider.models.firstWhere(
+                  (candidate) => candidate.id == modelId,
+                );
+                if (model.enabled) onSelect(modelId);
+              },
+              child: Column(
+                children: [
+                  for (final model in provider.models)
+                    _ProviderModelRow(
+                      model: model,
+                      providerId: provider.id,
+                      busy: busy,
+                      isSelected: model.selected,
+                      onSelect: () => onSelect(model.id),
+                      onEnabledChanged: (enabled) => onEnabledChanged(enabled),
+                    ),
+                ],
               ),
+            ),
           ] else
             const Text(
               'Nessun modello disponibile',
@@ -604,10 +603,7 @@ class _ProviderCard extends StatelessWidget {
                             color: JackPalette.amber,
                           ),
                         )
-                      : const Icon(
-                          Icons.wifi_tethering_rounded,
-                          size: 13,
-                        ),
+                      : const Icon(Icons.wifi_tethering_rounded, size: 13),
                   label: const Text('Test'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: JackPalette.text,
@@ -632,7 +628,6 @@ class _ProviderModelRow extends StatelessWidget {
     required this.isSelected,
     required this.onSelect,
     required this.onEnabledChanged,
-    super.key,
   });
 
   final AiProviderModel model;
@@ -654,14 +649,13 @@ class _ProviderModelRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Radio<String>(
-            value: model.id,
-            groupValue: isSelected ? model.id : null,
-            onChanged: !busy && model.enabled && !isSelected
-                ? (_) => onSelect()
-                : null,
-            activeColor: JackPalette.amber,
-            visualDensity: VisualDensity.compact,
+          IgnorePointer(
+            ignoring: busy || !model.enabled,
+            child: Radio<String>(
+              value: model.id,
+              activeColor: JackPalette.amber,
+              visualDensity: VisualDensity.compact,
+            ),
           ),
           const SizedBox(width: 4),
           Expanded(
@@ -683,10 +677,7 @@ class _ProviderModelRow extends StatelessWidget {
                     model.description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: JackPalette.muted,
-                      fontSize: 7.5,
-                    ),
+                    style: TextStyle(color: JackPalette.muted, fontSize: 7.5),
                   ),
                 ],
               ),
@@ -740,7 +731,11 @@ class _InlineError extends StatelessWidget {
     ),
     child: Row(
       children: [
-        const Icon(Icons.error_outline_rounded, color: JackPalette.red, size: 15),
+        const Icon(
+          Icons.error_outline_rounded,
+          color: JackPalette.red,
+          size: 15,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -776,7 +771,7 @@ class _OfflineState extends StatelessWidget {
 }
 
 class _ApiKeyDialog extends StatefulWidget {
-  const _ApiKeyDialog({required this.providerId, super.key});
+  const _ApiKeyDialog({required this.providerId});
 
   final String providerId;
 
@@ -820,7 +815,11 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
           children: [
             Text(
               'Inserisci la chiave API di $providerName. Il backend la salva nel Keychain macOS; l’app Flutter la trasmette solo al backend locale e non la salva.',
-              style: TextStyle(color: JackPalette.muted, fontSize: 11, height: 1.5),
+              style: TextStyle(
+                color: JackPalette.muted,
+                fontSize: 11,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 14),
             TextField(
@@ -832,7 +831,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
               enableSuggestions: false,
               style: const TextStyle(color: JackPalette.text, fontSize: 12),
               decoration: InputDecoration(
-                labelText: '${providerName} API key',
+                labelText: '$providerName API key',
                 errorText: _validationMessage,
                 suffixIcon: IconButton(
                   tooltip: _obscure ? 'Mostra chiave' : 'Nascondi chiave',

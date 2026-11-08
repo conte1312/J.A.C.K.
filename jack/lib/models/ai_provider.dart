@@ -151,7 +151,7 @@ class AiProviderInfo {
       available: available,
       lastError: lastError as String?,
       quotaExhausted: quotaExhausted,
-      models: (rawModels as List)
+      models: (rawModels)
           .map(AiProviderModel.fromJson)
           .toList(growable: false),
       selectedProvider: selectedProvider,
@@ -247,7 +247,7 @@ class AiMultiProviderConfiguration {
       throw const AiProviderException('Configurazione provider incompleta.');
     }
     return AiMultiProviderConfiguration(
-      providers: (rawProviders as List)
+      providers: (rawProviders)
           .map(AiProviderInfo.fromJson)
           .toList(growable: false),
       selectedProviderId: selectedProviderId as String?,
