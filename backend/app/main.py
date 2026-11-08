@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
+from app.control_plane.repository import (
+    ControlPlaneRepository,
+    default_control_plane_database_path,
+)
+from app.control_plane.service import ControlPlaneService
 from app.ai.credential_manager import CredentialManager
 from app.ai.cost_guard import CostGuard
 from app.ai.multi_preferences import AiMultiPreferencesStore
@@ -50,6 +55,8 @@ def create_app(
     conversation_service: ConversationService | None = None,
     planning_repository: PlanningRepository | None = None,
     planning_service: PlanningService | None = None,
+    control_plane_repository: ControlPlaneRepository | None = None,
+    control_plane_service: ControlPlaneService | None = None,
 ) -> FastAPI:
     repository = memory_repository or MemoryRepository(default_memory_database_path())
     provider_service = ai_provider_service or AiProviderService()
@@ -67,6 +74,12 @@ def create_app(
     )
     planning_service_instance = planning_service or PlanningService(
         repository=planning_repo
+    )
+    control_plane_repo = control_plane_repository or ControlPlaneRepository(
+        default_control_plane_database_path()
+    )
+    control_plane_service_instance = control_plane_service or ControlPlaneService(
+        control_plane_repo
     )
     # Nuovo sistema multi-provider
     from app.ai.provider_registry import registry as _provider_registry
@@ -87,6 +100,7 @@ def create_app(
         repository.initialize()
         conversation_store.initialize()
         planning_repo.initialize()
+        control_plane_repo.initialize()
         recurrence_scheduler = asyncio.create_task(
             run_recurrence_scheduler(planning_service_instance)
         )
@@ -132,18 +146,23 @@ def create_app(
     app.state.conversation_service = conversation_service_instance
     app.state.planning_repository = planning_repo
     app.state.planning_service = planning_service_instance
+    app.state.control_plane_repository = control_plane_repo
+    app.state.control_plane_service = control_plane_service_instance
     app.state.system_monitor = SystemMonitor(
         {
             "Memoria e conversazioni": repository.database_path,
             "Pianificazione": planning_repo.database_path,
+            "Control Plane": control_plane_repo.database_path,
         }
     )
     app.state.backup_service = LocalBackupService(
         {
             "Memoria e conversazioni": repository.database_path,
             "Pianificazione": planning_repo.database_path,
+            "Control Plane": control_plane_repo.database_path,
         },
         repository.database_path.parent / "backups",
+        optional_database_names={"Control Plane"},
     )
     app.state.security_posture = SecurityPosture(settings)
     app.state.ai_router = ai_router_instance

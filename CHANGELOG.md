@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — fondamenta Control Plane (development)
+
+### Aggiunto
+
+- Database `control-plane.sqlite3` separato per identità tipizzate, capability dichiarate e audit degli aggiornamenti al registro; incluso nel monitor e nei backup locali.
+- API `/api/v1/control-plane` per dichiarare/consultare identità e capability e consultare l’audit. Le capability restano descrittive e non concedono accesso.
+- Contratti validabili per richieste di permesso, regole policy, approvazioni ed emergency-stop, non collegati a decisioni o operazioni effettive.
+- Documento [docs/control-plane-architecture.md](docs/control-plane-architecture.md) con integrazioni, limiti e prerequisiti per enforcement sicuro.
+
+### Limiti di sicurezza
+
+- Nessuna autenticazione di caller; gli eventi attribuiscono l’operazione al servizio API e non provano l’identità umana/agente.
+- Nessun grant, policy applicata, approvazione operativa, emergency stop o esecuzione autonoma. Audit append-only a livello app/trigger SQLite, non antimanomissione contro il proprietario del database.
+- Nessuna modifica a Core Protection, permessi filesystem, credenziali, Cost Guard o permessi terminale.
+- La validazione read-only accetta anche gli archivi legacy che non contengono ancora `control-plane.sqlite3` e segnala `missing_optional_databases`; i nuovi backup includono tutti e tre i database locali.
+
+### Verifica
+
+- Backend: `cd backend && .venv/bin/python -m pytest -q` — **76 passed, 4 subtests passed**.
+- Flutter: `cd jack && flutter analyze --no-pub` — **nessun problema**; `flutter test --no-pub` — **42 test superati**.
+- macOS: `cd jack && flutter build macos --no-pub` — **build riuscita** (`jack.app`, 46,9 MB).
+- Test specifici includono dichiarazioni duplicate/invalidi, isolamento identità, audit persistente e immutabile, migrazione/non perdita dati, API, monitor e backup.
+
 ## Unreleased — preferenza fuso calendario
 
 ### Aggiunto

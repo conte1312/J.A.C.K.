@@ -396,6 +396,9 @@ class MemoryApiTests(unittest.TestCase):
                 "JACK_HOST": "127.0.0.1",
                 "JACK_PORT": str(self.port),
                 "JACK_MEMORY_DB_PATH": str(self.database_path),
+                "JACK_CONTROL_PLANE_DB_PATH": str(
+                    Path(self.temporary_directory.name) / "control-plane.sqlite3"
+                ),
             }
         )
         self.server = subprocess.Popen(

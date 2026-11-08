@@ -39,6 +39,9 @@ class ConversationsApiTests(unittest.TestCase):
                 "JACK_PORT": str(self.port),
                 "JACK_LOG_LEVEL": "warning",
                 "JACK_MEMORY_DB_PATH": str(self.database_path),
+                "JACK_CONTROL_PLANE_DB_PATH": str(
+                    Path(self.temporary_directory.name) / "control-plane.sqlite3"
+                ),
                 "JACK_AI_SETTINGS_PATH": str(
                     Path(self.temporary_directory.name) / "ai_settings.json"
                 ),

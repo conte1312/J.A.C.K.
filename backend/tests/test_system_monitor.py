@@ -106,8 +106,57 @@ class SystemMonitorTests(unittest.TestCase):
         self.assertEqual(listed["directory"], str(backup_directory.resolve()))
         validation = service.validate_backup(created["filename"])
         self.assertTrue(validation["valid"])
+        self.assertEqual(validation["missing_optional_databases"], [])
         self.assertIs(validation["databases"][0]["integrity"], True)
         self.assertEqual(validation["databases"][0]["schema_version"], 3)
+
+    def test_backup_validation_accepts_legacy_archive_without_optional_database(
+        self,
+    ) -> None:
+        planning_path = self.directory / "tasks.sqlite3"
+        control_plane_path = self.directory / "control-plane.sqlite3"
+        for path in (self.database_path, planning_path, control_plane_path):
+            with sqlite3.connect(path) as connection:
+                connection.execute("CREATE TABLE sample (value TEXT)")
+                connection.execute("PRAGMA user_version = 1")
+        backup_directory = self.directory / "backups"
+        backup_directory.mkdir(mode=0o700)
+        filename = "jack-backup-20261108T120000Z-123456abcdef.zip"
+        databases = [
+            {
+                "name": "Memoria e conversazioni",
+                "filename": "memories.sqlite3",
+                "schema_version": 1,
+            },
+            {
+                "name": "Pianificazione",
+                "filename": "tasks.sqlite3",
+                "schema_version": 1,
+            },
+        ]
+        manifest = {"format_version": 1, "databases": databases}
+        with zipfile.ZipFile(backup_directory / filename, "w") as archive:
+            archive.writestr("manifest.json", json.dumps(manifest))
+            archive.write(self.database_path, "memories.sqlite3")
+            archive.write(planning_path, "tasks.sqlite3")
+        service = LocalBackupService(
+            {
+                "Memoria e conversazioni": self.database_path,
+                "Pianificazione": planning_path,
+                "Control Plane": control_plane_path,
+            },
+            backup_directory,
+            optional_database_names={"Control Plane"},
+        )
+
+        validation = service.validate_backup(filename)
+
+        self.assertTrue(validation["valid"])
+        self.assertEqual(validation["missing_optional_databases"], ["Control Plane"])
+        self.assertEqual(
+            {database["name"] for database in validation["databases"]},
+            {"Memoria e conversazioni", "Pianificazione"},
+        )
 
     def test_incomplete_backup_does_not_publish_archive(self) -> None:
         with sqlite3.connect(self.database_path) as connection:

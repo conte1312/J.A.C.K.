@@ -25,6 +25,8 @@ class LocalBackupService:
         self,
         database_paths: dict[str, str | Path],
         backup_directory: str | Path,
+        *,
+        optional_database_names: set[str] | None = None,
     ) -> None:
         if not database_paths:
             raise ValueError("At least one database path is required.")
@@ -35,6 +37,10 @@ class LocalBackupService:
         filenames = [path.name for path in self._database_paths.values()]
         if len(filenames) != len(set(filenames)):
             raise ValueError("Database filenames must be unique in a backup.")
+        optional_names = set(optional_database_names or ())
+        if not optional_names.issubset(self._database_paths):
+            raise ValueError("Optional database names must be configured databases.")
+        self._optional_database_names = optional_names
         self.backup_directory = Path(backup_directory).expanduser()
 
     def list_backups(self) -> dict[str, Any]:
@@ -149,10 +155,18 @@ class LocalBackupService:
                 with zipfile.ZipFile(backup_path) as archive:
                     entries = archive.infolist()
                     entry_names = [entry.filename for entry in entries]
-                    expected_entries = {"manifest.json", *expected_files}
-                    if len(entry_names) != len(set(entry_names)) or set(
-                        entry_names
-                    ) != expected_entries:
+                    archive_database_files = set(entry_names) - {"manifest.json"}
+                    required_database_files = {
+                        path.name
+                        for name, path in self._database_paths.items()
+                        if name not in self._optional_database_names
+                    }
+                    if (
+                        len(entry_names) != len(set(entry_names))
+                        or "manifest.json" not in entry_names
+                        or not required_database_files.issubset(archive_database_files)
+                        or not archive_database_files.issubset(expected_files)
+                    ):
                         raise ValueError("Backup archive entries do not match.")
                     for entry in entries:
                         mode = entry.external_attr >> 16
@@ -198,11 +212,21 @@ class LocalBackupService:
                         ):
                             raise ValueError("Backup manifest databases do not match.")
                         manifest_by_name[name] = item
-                    if set(manifest_by_name) != set(self._database_paths):
+                    archive_database_names = {
+                        expected_files[filename] for filename in archive_database_files
+                    }
+                    if (
+                        not set(self._database_paths).difference(
+                            self._optional_database_names
+                        ).issubset(manifest_by_name)
+                        or not set(manifest_by_name).issubset(self._database_paths)
+                        or set(manifest_by_name) != archive_database_names
+                    ):
                         raise ValueError("Backup manifest databases do not match.")
 
                     databases = []
-                    for stored_filename, name in expected_files.items():
+                    for stored_filename in sorted(archive_database_files):
+                        name = expected_files[stored_filename]
                         entry = archive.getinfo(stored_filename)
                         reserve_bytes = 10 * 1024 * 1024
                         if entry.file_size > max(
@@ -270,6 +294,9 @@ class LocalBackupService:
             "filename": filename,
             "valid": True,
             "databases": databases,
+            "missing_optional_databases": sorted(
+                self._optional_database_names.difference(manifest_by_name)
+            ),
         }
 
     def _ensure_backup_directory(self) -> Path:

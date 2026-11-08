@@ -50,6 +50,9 @@ class PlanningApiTests(unittest.TestCase):
                     Path(self.temporary_directory.name) / "memories.sqlite3"
                 ),
                 "JACK_PLANNING_DB_PATH": str(self.database_path),
+                "JACK_CONTROL_PLANE_DB_PATH": str(
+                    Path(self.temporary_directory.name) / "control-plane.sqlite3"
+                ),
             }
         )
         self.server = subprocess.Popen(
@@ -183,7 +186,7 @@ class PlanningApiTests(unittest.TestCase):
         self.assertGreater(snapshot["disk"]["total_bytes"], 0)
         self.assertEqual(
             [database["name"] for database in snapshot["databases"]],
-            ["Memoria e conversazioni", "Pianificazione"],
+            ["Memoria e conversazioni", "Pianificazione", "Control Plane"],
         )
         self.assertTrue(
             all(database["integrity"] for database in snapshot["databases"])
@@ -203,14 +206,23 @@ class PlanningApiTests(unittest.TestCase):
         with zipfile.ZipFile(backup_path) as archive:
             self.assertEqual(
                 set(archive.namelist()),
-                {"manifest.json", "memories.sqlite3", "tasks.sqlite3"},
+                {
+                    "manifest.json",
+                    "memories.sqlite3",
+                    "tasks.sqlite3",
+                    "control-plane.sqlite3",
+                },
             )
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(
                 {database["name"] for database in manifest["databases"]},
-                {"Memoria e conversazioni", "Pianificazione"},
+                {"Memoria e conversazioni", "Pianificazione", "Control Plane"},
             )
-            for filename in ("memories.sqlite3", "tasks.sqlite3"):
+            for filename in (
+                "memories.sqlite3",
+                "tasks.sqlite3",
+                "control-plane.sqlite3",
+            ):
                 with tempfile.NamedTemporaryFile(
                     suffix=".sqlite3", dir=self.temporary_directory.name
                 ) as extracted:
@@ -229,8 +241,9 @@ class PlanningApiTests(unittest.TestCase):
         self.assertTrue(validation["valid"])
         self.assertEqual(
             {database["name"] for database in validation["databases"]},
-            {"Memoria e conversazioni", "Pianificazione"},
+            {"Memoria e conversazioni", "Pianificazione", "Control Plane"},
         )
+        self.assertEqual(validation["missing_optional_databases"], [])
         self.assertTrue(
             all(database["integrity"] for database in validation["databases"])
         )
@@ -381,6 +394,84 @@ class PlanningApiTests(unittest.TestCase):
         code, preferences = self._request("GET", "/api/v1/planning/preferences")
         self.assertEqual(code, 200)
         self.assertEqual(preferences["timezone"], "America/New_York")
+
+    def test_control_plane_declared_identities_capabilities_and_audit_api(self) -> None:
+        identity_path = "/api/v1/control-plane/identities"
+        capability_path = "/api/v1/control-plane/capabilities"
+        audit_path = "/api/v1/control-plane/audit-events"
+
+        code, identity = self._request(
+            "POST",
+            identity_path,
+            {"kind": "agent", "id": "planner", "display_name": "Planner agent"},
+        )
+        self.assertEqual(code, 201)
+        self.assertEqual(identity["kind"], "agent")
+        self.assertEqual(
+            self._request("GET", identity_path + "?kind=agent")[1][0]["id"],
+            "planner",
+        )
+        self.assertEqual(
+            self._request(
+                "POST",
+                identity_path,
+                {"kind": "agent", "id": "planner", "display_name": "Duplicate"},
+            )[0],
+            409,
+        )
+
+        capability = {
+            "id": "read-planning-tasks",
+            "owner": {"kind": "agent", "id": "planner"},
+            "description": "A declaration, not an access grant.",
+            "resource": "planning.tasks",
+            "operations": ["read"],
+            "scope": {"project_id": "project-1"},
+            "risk_level": "normal",
+            "approval_required": False,
+        }
+        code, registered = self._request(
+            "POST", capability_path, capability
+        )
+        self.assertEqual(code, 201)
+        self.assertEqual(registered["owner"]["kind"], "agent")
+        self.assertNotIn("granted", registered)
+        self.assertEqual(
+            self._request(
+                "GET",
+                capability_path + "?owner_kind=agent&resource=planning.tasks",
+            )[1][0]["id"],
+            "read-planning-tasks",
+        )
+        self.assertEqual(
+            self._request(
+                "POST",
+                capability_path,
+                {**capability, "owner": {"kind": "tool", "id": "planner"}},
+            )[0],
+            404,
+        )
+        self.assertEqual(
+            self._request(
+                "POST",
+                capability_path,
+                {**capability, "risk_level": "critical", "approval_required": False},
+            )[0],
+            422,
+        )
+
+        code, events = self._request("GET", audit_path + "?subject_id=planner")
+        self.assertEqual(code, 200)
+        self.assertEqual(
+            {event["action"] for event in events},
+            {"identity.declared", "capability.declared"},
+        )
+        self.assertTrue(
+            all(
+                event["actor"] == {"kind": "service", "id": "control-plane-api"}
+                for event in events
+            )
+        )
 
     def test_ai_proposals_require_confirmation_and_support_structured_breakdown(self) -> None:
         code, proposal = self._request(
