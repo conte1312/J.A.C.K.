@@ -11,9 +11,10 @@ import '../widgets/memory_editor_dialog.dart';
 import '../widgets/memory_entry_card.dart';
 
 class MemoryScreen extends StatefulWidget {
-  const MemoryScreen({this.repository, super.key});
+  const MemoryScreen({this.repository, this.onMemoryChanged, super.key});
 
   final MemoryRepository? repository;
+  final VoidCallback? onMemoryChanged;
 
   @override
   State<MemoryScreen> createState() => _MemoryScreenState();
@@ -126,6 +127,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
         _saving = false;
         _offline = false;
       });
+      widget.onMemoryChanged?.call();
       _showMessage(
         existing == null
             ? 'Ricordo salvato nel database locale di questo Mac.'
@@ -182,6 +184,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
         _memories.removeWhere((item) => item.id == memory.id);
         _saving = false;
       });
+      widget.onMemoryChanged?.call();
       _showMessage('Ricordo eliminato dal database locale.');
       await _loadMemories(showLoading: false);
     } on Exception catch (error) {

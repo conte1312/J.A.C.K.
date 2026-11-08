@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jack/app.dart';
+import 'package:jack/models/memory.dart';
 import 'package:jack/services/backend_status_service.dart';
+import 'package:jack/services/memory_api_service.dart';
 import 'package:jack/widgets/jack_core/jack_core.dart';
 import 'package:jack/widgets/jack_core/jack_core_demo_data.dart';
 import 'package:jack/widgets/jack_core/jack_core_painter.dart';
@@ -98,8 +100,17 @@ void main() {
   ) async {
     _setViewport(tester, const Size(1600, 1100));
     await tester.pumpWidget(
-      JackApp(backendStatusReader: _OfflineBackendReader()),
+      JackApp(
+        backendStatusReader: _ConnectedBackendReader(),
+        memoryRepository: _RealMemoryRepository(_sampleGraph),
+      ),
     );
+    // Il grafo live viene caricato in modo asincrono dal repository di
+    // memoria: servono più frame perché il post-frame di initState avvii
+    // il backend check, poi _loadLiveGraph e infine la ricompilazione.
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
     await tester.pump();
 
     final coreFinder = find.byKey(const ValueKey('conversation-jack-core'));
@@ -112,12 +123,13 @@ void main() {
 
     await tester.tapAt(coreRect.topLeft + node.position);
     await tester.pump();
+    await tester.pump();
 
     expect(find.text(node.node.title), findsOneWidget);
     expect(identical(tester.state(coreFinder), originalState), isTrue);
-    expect(find.text('GRAFO DEMO'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('clear-node-selection')));
+    await tester.pump();
     await tester.pump();
     expect(find.text('Nessun nodo selezionato'), findsOneWidget);
     expect(identical(tester.state(coreFinder), originalState), isTrue);
@@ -186,3 +198,93 @@ class _OfflineBackendReader implements BackendStatusReader {
   @override
   Future<BackendSnapshot?> check() async => null;
 }
+
+/// Repository di memoria in-memory che restituisce dati reali (nessun dato demo).
+class _RealMemoryRepository implements MemoryRepository {
+  const _RealMemoryRepository(this._graph);
+
+  final MemoryGraph _graph;
+
+  @override
+  Future<List<MemoryRecord>> list({
+    String? query,
+    MemoryCategory? category,
+    bool? excluded,
+  }) async =>
+      _graph.nodes
+          .where((m) => category == null || m.category == category)
+          .where((m) => excluded == null || m.excluded == excluded)
+          .toList(growable: false);
+
+  @override
+  Future<MemoryRecord> create(MemoryDraft draft) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<MemoryRecord> update(String id, MemoryDraft draft) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> delete(String id) async => throw UnimplementedError();
+
+  @override
+  Future<MemoryGraph> graph({
+    String? query,
+    MemoryCategory? category,
+    bool? excluded,
+  }) async =>
+      MemoryGraph(
+        nodes: _graph.nodes
+            .where((m) => category == null || m.category == category)
+            .where((m) => excluded == null || m.excluded == excluded)
+            .toList(growable: false),
+        edges: _graph.edges,
+      );
+
+  @override
+  Future<List<MemoryLink>> listLinks({String? memoryId}) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<MemoryLink> createLink(MemoryLinkDraft draft) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<MemoryLink> updateLink(String id, MemoryLinkDraft draft) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteLink(String id) async => throw UnimplementedError();
+
+  @override
+  Future<MemoryRecord> setExcluded(String id, bool excluded) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<MemoryRecord> markUsed(String id) async => throw UnimplementedError();
+}
+
+/// Lettore backend che simula il backend connesso (serve ad avviare il
+/// caricamento del grafo live dal repository di memoria).
+class _ConnectedBackendReader implements BackendStatusReader {
+  @override
+  Future<BackendSnapshot?> check() async => const BackendSnapshot(
+    name: 'J.A.C.K.',
+    version: '0.1.0',
+    modules: [],
+  );
+}
+
+final _sampleGraph = MemoryGraph(
+  nodes: [
+    MemoryRecord(
+      id: 'mem-real-01',
+      title: 'Progetto Atlas',
+      content: 'Nota di progetto reale salvata localmente.',
+      category: MemoryCategory.projects,
+      createdAt: DateTime(2026, 1, 10),
+      updatedAt: DateTime(2026, 1, 10),
+    ),
+  ],
+  edges: [],
+);

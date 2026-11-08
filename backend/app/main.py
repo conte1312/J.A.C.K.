@@ -11,11 +11,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
+from app.ai.credential_manager import CredentialManager
+from app.ai.cost_guard import CostGuard
+from app.ai.multi_preferences import AiMultiPreferencesStore
+from app.ai.orchestrator_service import AiOrchestratorService
+from app.ai.router_service import AiRouter
+from app.ai.routes import ai_router, chat_router
+from app.ai.service import AiProviderService
 from app.api.router import api_router
 from app.api.routes.health import router as health_router
+from app.conversations.repository import ConversationRepository
+from app.conversations.service import ConversationService
 from app.core.config import settings
 from app.core.logging_config import configure_logging
-from app.memory.repository import MemoryRepository, default_memory_database_path
+from app.memory.repository import (
+    MemoryRepository,
+    default_memory_database_path,
+)
 
 configure_logging()
 logger = logging.getLogger("jack.backend")
@@ -23,12 +35,39 @@ logger = logging.getLogger("jack.backend")
 
 def create_app(
     memory_repository: MemoryRepository | None = None,
+    ai_provider_service: AiProviderService | None = None,
+    conversation_repository: ConversationRepository | None = None,
+    conversation_service: ConversationService | None = None,
 ) -> FastAPI:
     repository = memory_repository or MemoryRepository(default_memory_database_path())
+    provider_service = ai_provider_service or AiProviderService()
+    conversation_store = conversation_repository or ConversationRepository(
+        default_memory_database_path()
+    )
+    conversation_service_instance = conversation_service or ConversationService(
+        conversation_repository=conversation_store,
+        memory_repository=repository,
+        ai_provider_service=provider_service,
+    )
+
+    # Nuovo sistema multi-provider
+    from app.ai.provider_registry import registry as _provider_registry
+
+    credential_manager = CredentialManager()
+    preferences_store = AiMultiPreferencesStore()
+    cost_guard = CostGuard(_provider_registry)
+    ai_router_instance = AiRouter(cost_guard=cost_guard)
+    orchestrator_service = AiOrchestratorService(
+        credentials=credential_manager,
+        preferences=preferences_store,
+        router=ai_router_instance,
+        cost_guard=cost_guard,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         repository.initialize()
+        conversation_store.initialize()
         logger.info(
             "Starting %s v%s on %s:%s",
             settings.app_name,
@@ -59,8 +98,15 @@ def create_app(
         )
 
     app.state.memory_repository = repository
+    app.state.ai_provider_service = provider_service
+    app.state.conversation_repository = conversation_store
+    app.state.conversation_service = conversation_service_instance
+    app.state.ai_router = ai_router_instance
+    app.state.ai_orchestrator_service = orchestrator_service
+    app.state.cost_guard = cost_guard
     app.include_router(health_router)
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(chat_router)
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
@@ -104,4 +150,3 @@ def create_app(
 
 
 app = create_app()
-

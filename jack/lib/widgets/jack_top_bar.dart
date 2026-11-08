@@ -107,7 +107,7 @@ class JackTopBar extends StatelessWidget {
                 if (!compact) ...[
                   const SizedBox(width: 12),
                   IconButton(
-                    tooltip: 'Profilo locale dimostrativo',
+                    tooltip: 'Profilo locale',
                     onPressed: onProfile,
                     icon: const Icon(Icons.logout_rounded, size: 15),
                     color: JackPalette.dim,
@@ -202,7 +202,7 @@ class _ListeningStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Stato dimostrativo: nessun microfono è collegato',
+      message: 'Stato microfono: non collegato',
       child: Material(
         color: JackPalette.panelRaised,
         shape: StadiumBorder(
@@ -225,7 +225,7 @@ class _ListeningStatus extends StatelessWidget {
                 ),
                 const SizedBox(width: 9),
                 Text(
-                  isListening ? 'In ascolto · demo' : 'In attesa · demo',
+                  isListening ? 'In ascolto' : 'In attesa',
                   style: const TextStyle(color: JackPalette.text, fontSize: 10),
                 ),
                 const SizedBox(width: 9),

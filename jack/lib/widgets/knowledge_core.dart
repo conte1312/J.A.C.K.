@@ -44,7 +44,7 @@ class _KnowledgeCoreState extends State<KnowledgeCore>
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Knowledge Core dimostrativo con orbite e nodi',
+      label: 'Knowledge Core con orbite e nodi',
       child: Listener(
         onPointerSignal: _handlePointerSignal,
         child: GestureDetector(

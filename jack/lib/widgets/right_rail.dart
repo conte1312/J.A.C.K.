@@ -6,7 +6,6 @@ import '../services/backend_status_service.dart';
 import '../theme/jack_theme.dart';
 import 'backend_status_indicator.dart';
 import 'jack_primitives.dart';
-import 'jack_core/jack_core_demo_data.dart';
 import 'jack_core/jack_core_graph.dart';
 import 'jack_core/jack_core_preview_panel.dart';
 
@@ -18,6 +17,7 @@ class RightRail extends StatelessWidget {
     this.selectedCoreNode,
     this.onClearCoreNodeSelection,
     this.showCorePreview = false,
+    this.graph = JackCoreGraph.empty,
     super.key,
   });
 
@@ -27,6 +27,7 @@ class RightRail extends StatelessWidget {
   final ValueListenable<JackCoreNode?>? selectedCoreNode;
   final VoidCallback? onClearCoreNodeSelection;
   final bool showCorePreview;
+  final JackCoreGraph graph;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +39,7 @@ class RightRail extends StatelessWidget {
             ValueListenableBuilder<JackCoreNode?>(
               valueListenable: selectedCoreNode!,
               builder: (context, node, child) => JackCorePreviewPanel(
-                graph: jackCoreDemoGraph,
+                graph: graph,
                 node: node,
                 onOpenInGraph: () => onSectionSelected(JackSection.exploration),
                 onClearSelection: onClearCoreNodeSelection,
@@ -140,7 +141,7 @@ class _ActivitiesCard extends StatelessWidget {
             const SectionEyebrow('Attività'),
             const SizedBox(height: 15),
             const Text(
-              'Nessuna attività pianificata nella demo.',
+              'Nessuna attività pianificata.',
               style: TextStyle(
                 color: JackPalette.muted,
                 fontSize: 10,
@@ -179,29 +180,8 @@ class _ModelsPanel extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(child: SectionEyebrow('Provider / modelli')),
-                DemoBadge(label: 'NON COLLEGATI'),
               ],
             ),
-          ),
-          _ModelRow(
-            name: 'GPT-4.1 · esempio',
-            provider: 'OpenAI · demo',
-            onTap: onOpen,
-          ),
-          _ModelRow(
-            name: 'Claude Sonnet · esempio',
-            provider: 'Anthropic · demo',
-            onTap: onOpen,
-          ),
-          _ModelRow(
-            name: 'Gemini Flash · esempio',
-            provider: 'Google · demo',
-            onTap: onOpen,
-          ),
-          _ModelRow(
-            name: 'Llama locale · esempio',
-            provider: 'Locale · demo',
-            onTap: onOpen,
           ),
           const SizedBox(height: 4),
           SizedBox(
@@ -232,7 +212,7 @@ class _ModelsPanel extends StatelessWidget {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Routing simulato · nessuna richiesta inviata',
+                    'Configura i provider nell\'AI Hub.',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: JackPalette.dim, fontSize: 8),
@@ -242,72 +222,6 @@ class _ModelsPanel extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModelRow extends StatelessWidget {
-  const _ModelRow({
-    required this.name,
-    required this.provider,
-    required this.onTap,
-  });
-
-  final String name;
-  final String provider;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 41,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            const StatusDot(color: JackPalette.amberSoft, size: 5),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(color: JackPalette.muted, fontSize: 10),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    provider,
-                    style: const TextStyle(color: JackPalette.dim, fontSize: 8),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                border: Border.all(color: JackPalette.border),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'DEMO',
-                style: TextStyle(
-                  color: JackPalette.dim,
-                  fontSize: 7,
-                  letterSpacing: 0.6,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -345,7 +259,7 @@ class _SystemStatusCard extends StatelessWidget {
                 width: 62,
                 height: 62,
                 child: CustomPaint(
-                  painter: _DemoRingPainter(color: backendColor),
+                  painter: _SystemRingPainter(color: backendColor),
                   child: Center(
                     child: Text(
                       ringLabel,
@@ -361,7 +275,7 @@ class _SystemStatusCard extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    const _SystemRow(label: 'J.A.C.K.', value: 'UI demo'),
+                    const _SystemRow(label: 'J.A.C.K.', value: 'UI'),
                     const _SystemRow(label: 'Mac', value: 'Locale'),
                     _SystemRow(
                       label: 'Backend',
@@ -425,8 +339,8 @@ class _SystemRow extends StatelessWidget {
   }
 }
 
-class _DemoRingPainter extends CustomPainter {
-  const _DemoRingPainter({required this.color});
+class _SystemRingPainter extends CustomPainter {
+  const _SystemRingPainter({required this.color});
 
   final Color color;
 
@@ -456,7 +370,7 @@ class _DemoRingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DemoRingPainter oldDelegate) =>
+  bool shouldRepaint(covariant _SystemRingPainter oldDelegate) =>
       oldDelegate.color != color;
 }
 

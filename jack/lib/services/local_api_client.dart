@@ -42,7 +42,7 @@ class LocalApiClient {
     'POST',
     path,
     body: body,
-    acceptedStatuses: const {HttpStatus.created},
+    acceptedStatuses: const {HttpStatus.ok, HttpStatus.created},
   );
 
   Future<Object?> putJson(String path, Object body) => _request(
@@ -59,6 +59,12 @@ class LocalApiClient {
       acceptedStatuses: const {HttpStatus.noContent},
     );
   }
+
+  Future<Object?> deleteJson(String path) => _request(
+    'DELETE',
+    path,
+    acceptedStatuses: const {HttpStatus.ok, HttpStatus.noContent},
+  );
 
   Future<Object?> _request(
     String method,
@@ -89,7 +95,7 @@ class LocalApiClient {
       if (!acceptedStatuses.contains(response.statusCode)) {
         throw LocalApiException(
           statusCode: response.statusCode,
-          message: _messageForStatus(response.statusCode),
+          message: _messageForStatus(response.statusCode, responseText),
         );
       }
       if (responseText.isEmpty) return null;
@@ -121,7 +127,18 @@ class LocalApiClient {
     }
   }
 
-  String _messageForStatus(int statusCode) => switch (statusCode) {
+  String _messageForStatus(int statusCode, String responseText) {
+    try {
+      final body = jsonDecode(responseText);
+      final detail = body is Map<String, dynamic> ? body['detail'] : null;
+      final message = detail is Map<String, dynamic>
+          ? detail['message']
+          : detail;
+      if (message is String && message.trim().isNotEmpty) return message;
+    } on FormatException {
+      // Use the stable status-based message when the body isn't JSON.
+    }
+    return switch (statusCode) {
     HttpStatus.notFound => 'Il ricordo richiesto non è stato trovato.',
     HttpStatus.unprocessableEntity =>
       'Dati non validi. Controlla i campi inseriti.',
@@ -131,4 +148,5 @@ class LocalApiClient {
       'Errore del backend locale. I dati mostrati non sono stati modificati.',
     _ => 'Richiesta non completata (HTTP $statusCode).',
   };
+  }
 }

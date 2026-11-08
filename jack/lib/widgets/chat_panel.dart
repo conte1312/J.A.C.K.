@@ -10,6 +10,8 @@ class ChatPanel extends StatelessWidget {
     required this.scrollController,
     required this.conversationTitle,
     required this.onExplore,
+    this.isGenerating = false,
+    this.activeModelLabel,
     super.key,
   });
 
@@ -17,6 +19,8 @@ class ChatPanel extends StatelessWidget {
   final ScrollController scrollController;
   final String conversationTitle;
   final VoidCallback onExplore;
+  final bool isGenerating;
+  final String? activeModelLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +52,8 @@ class ChatPanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  DemoBadge(label: 'DATI DEMO'),
+                  if (activeModelLabel != null)
+                    DemoBadge(label: activeModelLabel!.toUpperCase()),
                   const SizedBox(width: 12),
                   Text(
                     '${messages.length} messaggi',
@@ -74,72 +79,22 @@ class ChatPanel extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: JackPalette.borderSoft),
-          SizedBox(
-            height: 44,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: const Row(
-                children: [
-                  _ContextChip(
-                    label: 'Riunione di prodotto del martedì',
-                    color: JackPalette.amber,
-                  ),
-                  SizedBox(width: 7),
-                  _ContextChip(
-                    label: 'Luca Ferri — responsabile tecnico',
-                    color: JackPalette.cyan,
-                  ),
-                  SizedBox(width: 7),
-                  _ContextChip(
-                    label: 'Scadenza contratto hosting',
-                    color: JackPalette.lavender,
-                  ),
-                ],
-              ),
-            ),
-          ),
           Expanded(
             child: ListView.separated(
               controller: scrollController,
               reverse: true,
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              itemCount: messages.length,
+              itemCount: messages.length + (isGenerating ? 1 : 0),
               separatorBuilder: (context, index) => const SizedBox(height: 14),
-              itemBuilder: (context, index) => _MessageBubble(
-                message: messages[messages.length - 1 - index],
-              ),
+              itemBuilder: (context, index) {
+                if (isGenerating && index == 0) {
+                  return const _GeneratingBubble();
+                }
+                final messageIndex =
+                    messages.length - 1 - (index - (isGenerating ? 1 : 0));
+                return _MessageBubble(message: messages[messageIndex]);
+              },
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ContextChip extends StatelessWidget {
-  const _ContextChip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: JackPalette.panelRaised,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JackPalette.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          StatusDot(color: color, size: 4),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(color: JackPalette.muted, fontSize: 9),
           ),
         ],
       ),
@@ -212,7 +167,10 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const DemoBadge(label: 'RISPOSTA DEMO'),
+                    DemoBadge(
+                      label: message.providerLabel?.toUpperCase() ??
+                          'RISPOSTA AI',
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       message.time,
@@ -241,12 +199,37 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+class _GeneratingBubble extends StatelessWidget {
+  const _GeneratingBubble();
+
+  @override
+  Widget build(BuildContext context) => const Row(
+    children: [
+      SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          color: JackPalette.amber,
+        ),
+      ),
+      SizedBox(width: 9),
+      Text(
+        'Generazione risposta…',
+        style: TextStyle(color: JackPalette.muted, fontSize: 10),
+      ),
+    ],
+  );
+}
+
 class ChatComposer extends StatelessWidget {
   const ChatComposer({
     required this.controller,
     required this.onSend,
     required this.onAttachment,
     required this.onVoice,
+    this.enabled = true,
+    this.hintText = 'Parla con J.A.C.K.…',
     super.key,
   });
 
@@ -254,6 +237,8 @@ class ChatComposer extends StatelessWidget {
   final ValueChanged<String> onSend;
   final VoidCallback onAttachment;
   final VoidCallback onVoice;
+  final bool enabled;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +255,7 @@ class ChatComposer extends StatelessWidget {
         child: Row(
           children: [
             IconButton(
-              tooltip: 'Allegati non disponibili nella demo',
+              tooltip: 'Allegati',
               onPressed: onAttachment,
               icon: const Icon(Icons.add_rounded, size: 17),
               color: JackPalette.dim,
@@ -282,11 +267,12 @@ class ChatComposer extends StatelessWidget {
                 key: const ValueKey('chat-input'),
                 controller: controller,
                 textInputAction: TextInputAction.send,
-                onSubmitted: onSend,
+                onSubmitted: enabled ? onSend : null,
+                enabled: enabled,
                 style: const TextStyle(fontSize: 13, color: JackPalette.text),
                 cursorColor: JackPalette.amber,
-                decoration: const InputDecoration(
-                  hintText: 'Parla con J.A.C.K.…',
+                decoration: InputDecoration(
+                  hintText: hintText,
                   hintStyle: TextStyle(color: JackPalette.dim, fontSize: 13),
                   border: InputBorder.none,
                   isDense: true,
@@ -295,7 +281,7 @@ class ChatComposer extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: 'Voce non collegata',
+              tooltip: 'Voce',
               onPressed: onVoice,
               icon: const Icon(Icons.mic_none_rounded, size: 16),
               color: JackPalette.muted,
@@ -304,11 +290,11 @@ class ChatComposer extends StatelessWidget {
             ),
             const SizedBox(width: 5),
             Material(
-              color: JackPalette.panelHover,
+              color: enabled ? JackPalette.panelHover : JackPalette.panelRaised,
               shape: const CircleBorder(),
               child: InkWell(
                 key: const ValueKey('send-message'),
-                onTap: () => onSend(controller.text),
+                onTap: enabled ? () => onSend(controller.text) : null,
                 customBorder: const CircleBorder(),
                 child: const SizedBox(
                   width: 36,

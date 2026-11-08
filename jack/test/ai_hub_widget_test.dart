@@ -1,125 +1,36 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jack/app.dart';
-import 'package:jack/models/ai_hub_configuration.dart';
-import 'package:jack/services/ai_hub_demo_repository.dart';
+import 'package:jack/models/ai_provider.dart';
+import 'package:jack/services/ai_provider_service.dart';
 import 'package:jack/services/backend_status_service.dart';
 
 void main() {
-  testWidgets('opens AI Hub and labels providers and routing as demo', (
+  testWidgets('opens AI Hub and shows real provider panel', (
     tester,
   ) async {
     _setDesktopViewport(tester);
-    final repository = _MemoryAiHubRepository(
-      AiHubConfiguration.demoDefaults(),
-    );
-    await _openAiHub(tester, repository);
+    final gateway = _FakeMultiProviderGateway();
+    await _openAiHub(tester, gateway);
 
     expect(find.text('AI Hub'), findsOneWidget);
-    expect(find.text('GPT-4.1'), findsOneWidget);
-    expect(find.textContaining('provider non collegato'), findsNWidgets(4));
-    expect(find.text('SIMULATO'), findsOneWidget);
-    expect(find.text('NESSUNA CHIAMATA AI'), findsOneWidget);
-    expect(find.text('DATI DI ESEMPIO'), findsOneWidget);
-    expect(find.text('Backend · offline'), findsOneWidget);
+    expect(find.text('PROVIDER AI'), findsNWidgets(2));
+    expect(find.text('ORDINE DI ROUTING'), findsOneWidget);
+    expect(find.text('NVIDIA Nemotron'), findsAtLeastNWidgets(1));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('validates and adds a demo model', (tester) async {
-    _setDesktopViewport(tester);
-    final repository = _MemoryAiHubRepository(
-      AiHubConfiguration.demoDefaults(),
-    );
-    await _openAiHub(tester, repository);
-
-    await tester.ensureVisible(find.byKey(const ValueKey('add-ai-model')));
-    await tester.tap(find.byKey(const ValueKey('add-ai-model')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('save-demo-model')));
-    await tester.pumpAndSettle();
-    expect(find.text('Inserisci il nome del modello.'), findsOneWidget);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('model-name-field')),
-      'J.A.C.K. Demo Local',
-    );
-    await tester.tap(find.byKey(const ValueKey('save-demo-model')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('J.A.C.K. Demo Local'), findsOneWidget);
-    expect(repository.configuration.models, hasLength(5));
-  });
-
-  testWidgets('edits, selects default, changes route and removes a model', (
+  testWidgets('shows provider as unconfigured when no key is set', (
     tester,
   ) async {
     _setDesktopViewport(tester);
-    final repository = _MemoryAiHubRepository(
-      AiHubConfiguration.demoDefaults(),
+    final gateway = _FakeMultiProviderGateway(
+      configured: false,
     );
-    await _openAiHub(tester, repository);
+    await _openAiHub(tester, gateway);
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('edit-ai-model-openai-gpt-4.1')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('edit-ai-model-openai-gpt-4.1')),
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('model-name-field')),
-      'GPT demo modificato',
-    );
-    await tester.tap(find.byKey(const ValueKey('save-demo-model')));
-    await tester.pumpAndSettle();
-    expect(find.text('GPT demo modificato'), findsOneWidget);
-
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('set-default-model-anthropic-claude-sonnet')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('set-default-model-anthropic-claude-sonnet')),
-    );
-    await tester.pumpAndSettle();
-    expect(repository.configuration.defaultModelId, 'anthropic-claude-sonnet');
-
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('routing-select-vision')),
-    );
-    await tester.tap(find.byKey(const ValueKey('routing-select-vision')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(
-        const ValueKey('routing-choice-vision-openai-gpt-4.1'),
-        skipOffstage: false,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      repository.configuration.routes[AiHubTaskCategory.vision],
-      'openai-gpt-4.1',
-    );
-
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('remove-ai-model-google-gemini-flash')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('remove-ai-model-google-gemini-flash')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('confirm-remove-model')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey('ai-model-card-google-gemini-flash')),
-      findsNothing,
-    );
-    expect(repository.configuration.models, hasLength(3));
-    expect(
-      repository.configuration.routes[AiHubTaskCategory.vision],
-      'openai-gpt-4.1',
-    );
+    expect(find.text('Da configurare'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps the AI Hub usable in a compact desktop window', (
@@ -132,10 +43,8 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
 
-    await _openAiHub(
-      tester,
-      _MemoryAiHubRepository(AiHubConfiguration.demoDefaults()),
-    );
+    final gateway = _FakeMultiProviderGateway();
+    await _openAiHub(tester, gateway);
     expect(find.text('AI Hub'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -143,16 +52,18 @@ void main() {
 
 Future<void> _openAiHub(
   WidgetTester tester,
-  AiHubDemoRepository repository,
+  AiProviderGateway gateway,
 ) async {
   await tester.pumpWidget(
     JackApp(
       backendStatusReader: _FakeBackendReader(),
-      aiHubRepository: repository,
+      aiProviderGateway: gateway,
     ),
   );
   await tester.pump();
+  await tester.pump();
   await tester.tap(find.byKey(const ValueKey('nav-modules')));
+  await tester.pump();
   await tester.pump();
   await tester.pump();
 }
@@ -171,18 +82,133 @@ class _FakeBackendReader implements BackendStatusReader {
   Future<BackendSnapshot?> check() async => null;
 }
 
-class _MemoryAiHubRepository extends AiHubDemoRepository {
-  _MemoryAiHubRepository(this.configuration)
-    : super(file: File('/unused/ai-hub-test.json'));
+class _FakeMultiProviderGateway implements AiProviderGateway {
+  _FakeMultiProviderGateway({this.configured = true});
 
-  AiHubConfiguration configuration;
+  final bool configured;
+
+  static final _model = AiProviderModel(
+    id: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    name: 'Nemotron 3.5 Lightning 30B A3B',
+    description: 'Modello Nemotron orientato a chat.',
+    isFree: true,
+    contextWindow: 16384,
+    maxOutputTokens: 1024,
+    enabled: true,
+    selected: true,
+    availabilityNote: 'Piano gratuito disponibile',
+  );
+
+  static final _provider = AiProviderInfo(
+    id: 'nvidia',
+    name: 'NVIDIA Nemotron',
+    type: AiProviderType.online,
+    baseUrl: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    requiresCredential: true,
+    isFreeTierAvailable: true,
+    configured: true,
+    credentialSource: 'keychain',
+    available: true,
+    lastError: null,
+    quotaExhausted: false,
+    models: [_model],
+    selectedProvider: true,
+  );
+
+  static final _routerConfig = AiRouterConfig(
+    providerOrder: ['nvidia'],
+    enabledProviders: ['nvidia'],
+    maxRetriesPerProvider: 1,
+    failoverEnabled: true,
+  );
+
+  static final _configuration = AiMultiProviderConfiguration(
+    providers: [_provider],
+    selectedProviderId: 'nvidia',
+    selectedModelId: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    providerOrder: ['nvidia'],
+    enabledProviders: ['nvidia'],
+    routerConfig: _routerConfig,
+  );
 
   @override
-  Future<AiHubConfiguration> load() async => configuration;
-
-  @override
-  Future<void> save(AiHubConfiguration next) async {
-    next.validate();
-    configuration = next;
+  Future<AiMultiProviderConfiguration> loadProviderConfiguration() async {
+    final config = _configuration;
+    return AiMultiProviderConfiguration(
+      providers: [
+        for (final p in config.providers)
+          AiProviderInfo(
+            id: p.id,
+            name: p.name,
+            type: p.type,
+            baseUrl: p.baseUrl,
+            requiresCredential: p.requiresCredential,
+            isFreeTierAvailable: p.isFreeTierAvailable,
+            configured: configured,
+            credentialSource: configured ? 'keychain' : null,
+            available: p.available,
+            lastError: p.lastError,
+            quotaExhausted: p.quotaExhausted,
+            models: p.models,
+            selectedProvider: p.selectedProvider,
+          ),
+      ],
+      selectedProviderId: configured ? 'nvidia' : null,
+      selectedModelId: config.selectedModelId,
+      providerOrder: config.providerOrder,
+      enabledProviders: config.enabledProviders,
+      routerConfig: config.routerConfig,
+    );
   }
+
+  @override
+  Future<AiMultiProviderConfiguration> saveProviderApiKey(
+    String providerId,
+    String value,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiMultiProviderConfiguration> removeProviderApiKey(
+    String providerId,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiMultiProviderConfiguration> testProviderConnection(
+    String providerId,
+    String modelId,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiMultiProviderConfiguration> setProviderOrder(
+    List<String> order,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiMultiProviderConfiguration> setProviderEnabled(
+    String providerId,
+    bool enabled,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiMultiProviderConfiguration> selectProviderAndModel(
+    String providerId,
+    String? modelId,
+  ) async =>
+      _configuration;
+
+  @override
+  Future<AiChatResponse> sendChat({
+    required String? modelId,
+    required List<AiChatTurn> messages,
+  }) async =>
+      AiChatResponse(
+        providerId: 'nvidia',
+        modelId: modelId ?? 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        content: 'Risposta di prova.',
+      );
 }

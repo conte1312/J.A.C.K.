@@ -79,6 +79,14 @@ class JackCoreGraph {
   final List<JackCoreEdge> edges;
   final JackCoreGraphOrigin origin;
 
+  /// Grafico vuoto: stato reale quando non ci sono ricordi. Sostituisce il
+  /// fallback dati-demo, così il Knowledge Core mostra solo informazioni vere.
+  static const JackCoreGraph empty = JackCoreGraph(
+    nodes: [],
+    edges: [],
+    origin: JackCoreGraphOrigin.live,
+  );
+
   String? validate() {
     final ids = nodes.map((node) => node.id).toSet();
     if (ids.length != nodes.length) {

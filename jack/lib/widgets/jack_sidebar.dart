@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/conversation.dart';
 import '../models/jack_section.dart';
 import '../theme/jack_theme.dart';
 import 'jack_primitives.dart';
@@ -11,7 +12,8 @@ class JackSidebar extends StatelessWidget {
     required this.onSectionSelected,
     required this.onNewConversation,
     required this.onConversationSelected,
-    required this.activeConversation,
+    required this.activeConversationId,
+    required this.conversations,
     super.key,
   });
 
@@ -20,7 +22,8 @@ class JackSidebar extends StatelessWidget {
   final ValueChanged<JackSection> onSectionSelected;
   final VoidCallback onNewConversation;
   final ValueChanged<String> onConversationSelected;
-  final String activeConversation;
+  final String? activeConversationId;
+  final List<Conversation> conversations;
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +50,8 @@ class JackSidebar extends StatelessWidget {
             ),
             Expanded(
               child: _ConversationHistory(
-                activeConversation: activeConversation,
+                activeConversationId: activeConversationId,
+                conversations: conversations,
                 onNewConversation: onNewConversation,
                 onConversationSelected: onConversationSelected,
               ),
@@ -141,12 +145,14 @@ class _NavigationItem extends StatelessWidget {
 
 class _ConversationHistory extends StatelessWidget {
   const _ConversationHistory({
-    required this.activeConversation,
+    required this.activeConversationId,
+    required this.conversations,
     required this.onNewConversation,
     required this.onConversationSelected,
   });
 
-  final String activeConversation;
+  final String? activeConversationId;
+  final List<Conversation> conversations;
   final VoidCallback onNewConversation;
   final ValueChanged<String> onConversationSelected;
 
@@ -159,13 +165,14 @@ class _ConversationHistory extends StatelessWidget {
           child: Row(
             children: [
               const Expanded(child: SectionEyebrow('Conversazioni')),
-              Text(
-                'In attesa',
-                style: TextStyle(
-                  color: JackPalette.dim.withValues(alpha: 0.9),
-                  fontSize: 9,
+              if (conversations.isEmpty)
+                Text(
+                  'Nessuna conversazione',
+                  style: TextStyle(
+                    color: JackPalette.dim.withValues(alpha: 0.9),
+                    fontSize: 9,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -188,18 +195,25 @@ class _ConversationHistory extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        _ConversationItem(
-          title: 'Preparazione riunione prodotto',
-          age: '1 ora fa',
-          active: activeConversation == 'Preparazione riunione prodotto',
-          onTap: () => onConversationSelected('Preparazione riunione prodotto'),
-        ),
-        _ConversationItem(
-          title: 'Riassumi lo stato del progetto',
-          age: '1 ora fa',
-          active: activeConversation == 'Riassumi lo stato del progetto',
-          onTap: () => onConversationSelected('Riassumi lo stato del progetto'),
-        ),
+        for (final conversation in conversations)
+          _ConversationItem(
+            key: ValueKey('conversation-${conversation.id}'),
+            conversation: conversation,
+            active: activeConversationId == conversation.id,
+            onTap: () => onConversationSelected(conversation.id),
+          ),
+        if (conversations.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Crea una nuova conversazione per iniziare.',
+              style: TextStyle(
+                color: JackPalette.dim,
+                fontSize: 9,
+                height: 1.4,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -207,16 +221,30 @@ class _ConversationHistory extends StatelessWidget {
 
 class _ConversationItem extends StatelessWidget {
   const _ConversationItem({
-    required this.title,
-    required this.age,
+    super.key,
+    required this.conversation,
     required this.active,
     required this.onTap,
   });
 
-  final String title;
-  final String age;
+  final Conversation conversation;
   final bool active;
   final VoidCallback onTap;
+
+  String _ageLabel(DateTime updatedAt) {
+    final now = DateTime.now();
+    final difference = now.difference(updatedAt);
+    if (difference.inDays > 0) {
+      return '${difference.inDays} gg fa';
+    }
+    if (difference.inHours > 0) {
+      return '${difference.inHours} h fa';
+    }
+    if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} min fa';
+    }
+    return 'Ora';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -240,19 +268,35 @@ class _ConversationItem extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: active ? JackPalette.text : JackPalette.muted,
-                    fontSize: 11,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      conversation.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: active ? JackPalette.text : JackPalette.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    if (conversation.modelId != null)
+                      Text(
+                        conversation.modelId!.split('/').last,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: JackPalette.dim,
+                          fontSize: 8,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 7),
               Text(
-                age,
+                _ageLabel(conversation.updatedAt),
                 style: const TextStyle(color: JackPalette.dim, fontSize: 9),
               ),
             ],
@@ -302,7 +346,7 @@ class _DeviceFooter extends StatelessWidget {
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'LOCALE · DEMO',
+                        'LOCALE',
                         style: TextStyle(
                           color: JackPalette.dim,
                           fontSize: 8,

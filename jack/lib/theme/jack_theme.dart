@@ -16,6 +16,7 @@ abstract final class JackPalette {
   static const blue = Color(0xFF77B2DE);
   static const lavender = Color(0xFF9BAFCC);
   static const green = Color(0xFF7FC69D);
+  static const red = Color(0xFFE85D5D);
 }
 
 abstract final class JackTheme {
