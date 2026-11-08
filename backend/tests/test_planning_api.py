@@ -473,6 +473,61 @@ class PlanningApiTests(unittest.TestCase):
             )
         )
 
+    def test_curated_agent_profiles_are_read_only_and_have_no_capabilities(self) -> None:
+        catalog_path = "/api/v1/control-plane/agent-profiles"
+        code, profiles = self._request("GET", catalog_path)
+
+        self.assertEqual(code, 200)
+        self.assertEqual(len(profiles), 10)
+        self.assertEqual(
+            {profile["id"] for profile in profiles},
+            {
+                "software-architect",
+                "backend-architect",
+                "desktop-app-engineer",
+                "ai-engineer",
+                "multi-agent-systems-architect",
+                "minimal-change-engineer",
+                "code-reviewer",
+                "privacy-engineer",
+                "test-automation-engineer",
+                "project-shepherd",
+            },
+        )
+        self.assertTrue(
+            all(
+                profile["enabled"] is False
+                and profile["execution_enabled"] is False
+                and profile["capabilities"] == []
+                and profile["tools"] == []
+                and profile["source_license"] == "MIT"
+                for profile in profiles
+            )
+        )
+
+        code, profile = self._request(
+            "GET", f"{catalog_path}/multi-agent-systems-architect"
+        )
+        self.assertEqual(code, 200)
+        self.assertEqual(profile["source_repository"], "msitarzewski/agency-agents")
+        self.assertEqual(
+            profile["source_revision"], "b859c515d813efcfc4755d3471dd9e7686c7706d"
+        )
+        self.assertTrue(profile["profile_markdown"].startswith("---\n"))
+        self.assertEqual(profile["capabilities"], [])
+        self.assertEqual(profile["tools"], [])
+        self.assertEqual(
+            self._request("GET", f"{catalog_path}/not-a-profile")[0], 404
+        )
+        self.assertEqual(
+            self._request(
+                "POST",
+                f"{catalog_path}/multi-agent-systems-architect",
+                {},
+            )[0],
+            405,
+        )
+
     def test_ai_proposals_require_confirmation_and_support_structured_breakdown(self) -> None:
         code, proposal = self._request(
             "POST",

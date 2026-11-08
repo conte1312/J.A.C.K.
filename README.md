@@ -11,7 +11,9 @@ J.A.C.K. è un prototipo desktop per macOS in sviluppo. L'interfaccia segue il r
 - SQLite: memorie, conversazioni e messaggi aggiunti dall'utente, gestiti dal backend.
 - AI Hub: configurazione dei provider AI (chiave API, test connessione, selezione e abilitazione modelli, ordine di routing) letta dal backend.
 
-Il backend espone `/health`, `/api/v1/info`, le API AI in `/api/v1/ai/...`, la chat persistente `POST /api/v1/conversations/{id}/chat` (oltre all'endpoint diretto `POST /api/v1/chat`), le API conversazioni in `/api/v1/conversations/...` e le API CRUD per le memorie in `/api/v1/memories`. Su macOS il database viene creato in `~/Library/Application Support/J.A.C.K./memories.sqlite3`.
+Il backend espone `/health`, `/api/v1/info`, le API AI in `/api/v1/ai/...`, la chat persistente `POST /api/v1/conversations/{id}/chat` (oltre all'endpoint diretto `POST /api/v1/chat`), le API conversazioni in `/api/v1/conversations/...`, le API CRUD per le memorie in `/api/v1/memories` e il Control Plane in `/api/v1/control-plane/...`. Su macOS i database locali vengono creati in `~/Library/Application Support/J.A.C.K./`.
+
+Il Control Plane include un catalogo consultivo di dieci profili specialistici selezionati dal progetto MIT [`agency-agents`](https://github.com/msitarzewski/agency-agents): `GET /api/v1/control-plane/agent-profiles` elenca i ruoli e `GET /api/v1/control-plane/agent-profiles/{id}` legge un profilo. Sono profili testuali, non agenti in esecuzione: strumenti e capability sono vuoti e l'esecuzione è disabilitata. L'uso di modelli resta vincolato dal Cost Guard.
 
 ## Funzionalità presenti
 

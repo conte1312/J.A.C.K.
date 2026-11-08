@@ -141,3 +141,23 @@ class AuditEventRead(ControlPlaneWrite):
     subject: IdentityRef
     outcome: Literal["recorded"]
     details: dict[str, object]
+
+
+class AgentProfileRead(ControlPlaneWrite):
+    id: str
+    name: str
+    description: str
+    division: str
+    source_repository: str
+    source_revision: str
+    source_file: str
+    source_url: str
+    source_license: Literal["MIT"]
+    enabled: Literal[False]
+    execution_enabled: Literal[False]
+    capabilities: list[str]
+    tools: list[str]
+
+
+class AgentProfileDetailRead(AgentProfileRead):
+    profile_markdown: str

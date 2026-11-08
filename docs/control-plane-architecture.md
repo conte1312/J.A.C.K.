@@ -43,6 +43,10 @@ Il package `backend/app/control_plane/` separa:
 - `service.py`: validazione delle dichiarazioni; deliberatamente nessuna
   decisione di autorizzazione.
 - `routes.py`: API per dichiarazioni e consultazione audit.
+- `agent_catalog.py`: catalogo statico in sola lettura di profili specialistici
+  selezionati dal repository MIT `msitarzewski/agency-agents`. I file Markdown
+  originali e l'avviso di licenza sono in `agency_profiles/`; il catalogo è
+  fissato a un commit upstream, non scarica aggiornamenti a runtime.
 
 Il database dedicato `control-plane.sqlite3` usa `PRAGMA user_version=1`, file
 mode `0600` e directory applicativa `0700`. Le tabelle sono:
@@ -98,6 +102,19 @@ Prefisso `/api/v1/control-plane`:
   registrata; non abilita la risorsa o l'operazione.
 - `GET /audit-events`: consulta gli eventi immutabili del registro con filtri
   per soggetto/azione e paginazione.
+- `GET /agent-profiles`: elenca i profili curati, con provenienza e stato
+  esplicitamente inattivo.
+- `GET /agent-profiles/{profile_id}`: legge il profilo Markdown originale
+  selezionato. Non esistono endpoint per abilitarlo, assegnargli strumenti o
+  avviarne l'esecuzione.
+
+Il primo set contiene dieci ruoli per architettura, backend, desktop, AI,
+sistemi multi-agente, modifiche minime, code review, privacy, test automation e
+gestione progetto. I profili sono testo consultivo: `enabled` ed
+`execution_enabled` sono sempre `false`, `tools` e `capabilities` sono vuoti.
+Il catalogo non crea identità nel registro persistente né modifica missioni o
+permessi. “Gratuito” si riferisce ai profili MIT; eventuali chiamate a modelli
+restano soggette al Cost Guard e alle disponibilità dei provider configurati.
 
 Le mutazioni generano eventi attribuiti al servizio `control-plane-api`, perché
 il backend attuale non autentica l'identità umana o agente che invoca l'API.

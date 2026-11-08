@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — catalogo consultivo di agenti gratuiti
+
+### Aggiunto
+
+- Dieci profili specialistici selezionati dal repository MIT `msitarzewski/agency-agents`, fissati alla revisione `b859c515d813efcfc4755d3471dd9e7686c7706d` con licenza e attribuzione upstream conservate.
+- API read-only `GET /api/v1/control-plane/agent-profiles` e `GET /api/v1/control-plane/agent-profiles/{id}` per elencare o consultare i profili.
+- Test API che verificano provenienza, accesso ai contenuti, assenza di strumenti/capability, profili disabilitati e rifiuto di profili inesistenti o operazioni di attivazione.
+
+### Limiti
+
+- Il catalogo non è un runtime: non crea identità persistenti, non assegna profili alle missioni e non concede privilegi. Tutti i profili hanno `enabled=false`, `execution_enabled=false`, `tools=[]` e `capabilities=[]`.
+- “Gratuito” indica licenza MIT dei profili, non inferenza gratuita. Qualunque futura chiamata AI resta soggetta al Cost Guard e al provider configurato.
+- `start.sh` e l'interfaccia Flutter non cambiano; nessuna chiamata a provider o installazione di strumenti esterni è stata eseguita.
+
 ## Unreleased — fondamenta Control Plane (development)
 
 ### Aggiunto

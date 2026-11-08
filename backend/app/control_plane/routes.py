@@ -4,11 +4,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from app.control_plane.agent_catalog import (
+    AgentProfileNotFoundError,
+    get_agent_profile,
+    list_agent_profiles,
+)
 from app.control_plane.repository import (
     DuplicateDeclarationError,
     IdentityNotFoundError,
 )
 from app.control_plane.schemas import (
+    AgentProfileDetailRead,
+    AgentProfileRead,
     AuditEventRead,
     CapabilityDeclaration,
     CapabilityRead,
@@ -26,6 +33,22 @@ def get_control_plane_service(request: Request) -> ControlPlaneService:
 
 
 Service = Annotated[ControlPlaneService, Depends(get_control_plane_service)]
+
+
+@router.get("/agent-profiles", response_model=list[AgentProfileRead])
+def list_declared_agent_profiles() -> list[dict[str, object]]:
+    return list_agent_profiles()
+
+
+@router.get(
+    "/agent-profiles/{profile_id}",
+    response_model=AgentProfileDetailRead,
+)
+def read_agent_profile(profile_id: str) -> dict[str, object]:
+    try:
+        return get_agent_profile(profile_id)
+    except AgentProfileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Agent profile not found.") from error
 
 
 @router.get("/identities", response_model=list[IdentityRead])
