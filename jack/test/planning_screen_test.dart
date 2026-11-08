@@ -120,6 +120,35 @@ void main() {
 
     expect(gateway.projects.single.name, 'Rilascio V1.2');
   });
+
+  testWidgets('persists the selected default calendar timezone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final gateway = _EmptyPlanningGateway();
+    await tester.pumpWidget(
+      JackApp(
+        backendStatusReader: _OfflineBackendReader(),
+        planningGateway: gateway,
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Pianificazione').first);
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byType(DropdownMenu<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Asia/Tokyo').last);
+    await tester.pumpAndSettle();
+
+    expect(gateway.defaultTimezone, 'Asia/Tokyo');
+  });
 }
 
 class _OfflineBackendReader implements BackendStatusReader {
@@ -233,6 +262,15 @@ class _EmptyPlanningGateway implements PlanningGateway {
     'Europe/Rome',
     'UTC',
   ];
+
+  String defaultTimezone = 'Europe/Rome';
+
+  @override
+  Future<String> getDefaultTimezone() async => defaultTimezone;
+
+  @override
+  Future<String> setDefaultTimezone(String timezone) async =>
+      defaultTimezone = timezone;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

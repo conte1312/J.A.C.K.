@@ -32,7 +32,7 @@ from app.planning.models import (
 
 logger = logging.getLogger("jack.backend.planning")
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 TASKS_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS tasks (
@@ -146,6 +146,14 @@ CALENDAR_EVENTS_TABLE_SQL = """
     )
 """
 
+PLANNING_SETTINGS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS planning_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+"""
+
 AI_PROPOSALS_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS planning_ai_proposals (
         id TEXT PRIMARY KEY,
@@ -248,6 +256,7 @@ class PlanningRepository:
         connection.execute(MISSIONS_TABLE_SQL)
         connection.execute(PROJECT_MILESTONES_TABLE_SQL)
         connection.execute(CALENDAR_EVENTS_TABLE_SQL)
+        connection.execute(PLANNING_SETTINGS_TABLE_SQL)
         connection.execute(AI_PROPOSALS_TABLE_SQL)
         connection.execute(MISSION_LOGS_TABLE_SQL)
         connection.execute(MISSION_APPROVALS_TABLE_SQL)
@@ -263,6 +272,13 @@ class PlanningRepository:
             connection.execute(
                 "ALTER TABLE missions ADD COLUMN results TEXT NOT NULL DEFAULT ''"
             )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO planning_settings (key, value, updated_at)
+            VALUES ('default_timezone', 'Europe/Rome', ?)
+            """,
+            (_now(),),
+        )
         task_columns = {
             row["name"]
             for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
@@ -381,6 +397,27 @@ class PlanningRepository:
             raise
         finally:
             connection.close()
+
+    def get_default_timezone(self) -> str:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT value FROM planning_settings WHERE key = 'default_timezone'"
+            ).fetchone()
+        return str(row["value"]) if row else "Europe/Rome"
+
+    def set_default_timezone(self, timezone_name: str) -> str:
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO planning_settings (key, value, updated_at)
+                VALUES ('default_timezone', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (timezone_name, _now()),
+            )
+        return timezone_name
 
     # ------------------------------------------------------------------ tasks
 

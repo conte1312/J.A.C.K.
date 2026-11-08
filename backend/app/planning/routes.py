@@ -11,6 +11,7 @@ from app.planning.models import TaskPriority, TaskStatus
 from app.planning.schemas import (
     AiApplyRequest,
     AiInterpretRequest,
+    CalendarPreferencesUpdate,
     EventCreate,
     EventUpdate,
     MilestoneCreate,
@@ -316,17 +317,33 @@ def delete_milestone(milestone_id: str, service: Service):
 
 # ------------------------------------------------------------------- calendar
 
+@router.get("/preferences")
+def get_planning_preferences(service: Service):
+    return {"timezone": service.get_default_timezone()}
+
+
+@router.put("/preferences")
+def update_planning_preferences(
+    payload: CalendarPreferencesUpdate, service: Service
+):
+    try:
+        return {"timezone": service.set_default_timezone(payload.timezone)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/calendar")
 def get_calendar(
     service: Service,
     from_date: date = Query(...),
     to_date: date = Query(...),
-    timezone_name: str = Query("UTC", alias="timezone"),
+    timezone_name: Optional[str] = Query(None, alias="timezone"),
     project_id: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
 ):
     if to_date < from_date:
         raise HTTPException(status_code=422, detail="Intervallo calendario non valido.")
+    timezone_name = timezone_name or service.get_default_timezone()
     try:
         service._validate_timezone(timezone_name)
         zone = ZoneInfo(timezone_name)
@@ -362,10 +379,11 @@ def list_events(
     service: Service,
     starts_at: Optional[str] = Query(None),
     ends_at: Optional[str] = Query(None),
-    timezone_name: str = Query("UTC", alias="timezone"),
+    timezone_name: Optional[str] = Query(None, alias="timezone"),
     project_id: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
 ):
+    timezone_name = timezone_name or service.get_default_timezone()
     try:
         return service.list_events(
             {

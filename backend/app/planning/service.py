@@ -367,6 +367,13 @@ class PlanningService:
     def delete_event(self, event_id: str) -> bool:
         return self._repository.delete_event(event_id)
 
+    def get_default_timezone(self) -> str:
+        return self._repository.get_default_timezone()
+
+    def set_default_timezone(self, timezone_name: str) -> str:
+        self._validate_timezone(timezone_name)
+        return self._repository.set_default_timezone(timezone_name)
+
     # -------------------------------------------------------------- missions
 
     def create_mission(self, draft: dict[str, Any]) -> dict[str, Any]:

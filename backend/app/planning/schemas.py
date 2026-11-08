@@ -115,6 +115,10 @@ class EventUpdate(PlanningWrite):
     recurrence_until: str | None = None
 
 
+class CalendarPreferencesUpdate(PlanningWrite):
+    timezone: str = Field(min_length=1, max_length=100)
+
+
 class AiInterpretRequest(PlanningWrite):
     text: str = Field(min_length=1, max_length=10_000)
 

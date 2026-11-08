@@ -66,6 +66,8 @@ abstract interface class PlanningGateway {
     String? priority,
   });
   Future<List<String>> listTimezones();
+  Future<String> getDefaultTimezone();
+  Future<String> setDefaultTimezone(String timezone);
   Future<PlanningEvent> createEvent(Map<String, Object?> draft);
   Future<PlanningEvent> updateEvent(String id, Map<String, Object?> patch);
   Future<void> deleteEvent(String id);
@@ -319,6 +321,26 @@ class PlanningApiService implements PlanningGateway {
     return (response['timezones'] as List<dynamic>).whereType<String>().toList(
       growable: false,
     );
+  }
+
+  @override
+  Future<String> getDefaultTimezone() async {
+    final response = await _client.getJson('$_prefix/preferences');
+    if (response is! Map<String, dynamic> || response['timezone'] is! String) {
+      throw const FormatException('Preferenze calendario non valide.');
+    }
+    return response['timezone'] as String;
+  }
+
+  @override
+  Future<String> setDefaultTimezone(String timezone) async {
+    final response = await _client.putJson('$_prefix/preferences', {
+      'timezone': timezone,
+    });
+    if (response is! Map<String, dynamic> || response['timezone'] is! String) {
+      throw const FormatException('Preferenze calendario non valide.');
+    }
+    return response['timezone'] as String;
   }
 
   @override

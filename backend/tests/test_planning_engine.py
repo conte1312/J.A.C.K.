@@ -39,7 +39,36 @@ class PlanningEngineTests(unittest.TestCase):
         self.assertEqual(reopened.get_task(task["id"])["title"], "Attività persistente")
         self.assertEqual(reopened.get_project(project["id"])["task_ids"], [task["id"]])
         with sqlite3.connect(self.database_path) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+        self.assertEqual(reopened.get_default_timezone(), "Europe/Rome")
+
+    def test_calendar_timezone_preference_validates_and_persists(self) -> None:
+        self.assertEqual(self.service.get_default_timezone(), "Europe/Rome")
+        self.assertEqual(
+            self.service.set_default_timezone("America/New_York"),
+            "America/New_York",
+        )
+        with self.assertRaisesRegex(ValueError, "IANA"):
+            self.service.set_default_timezone("Mars/Olympus")
+
+        reopened = PlanningRepository(self.database_path)
+        reopened.initialize()
+        self.assertEqual(reopened.get_default_timezone(), "America/New_York")
+
+    def test_version_three_database_migrates_timezone_preference_without_data_loss(
+        self,
+    ) -> None:
+        task = self.service.create_task({"title": "Task pre-migrazione"})
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute("DROP TABLE planning_settings")
+            connection.execute("PRAGMA user_version = 3")
+
+        reopened = PlanningRepository(self.database_path)
+        reopened.initialize()
+        self.assertEqual(reopened.get_task(task["id"])["title"], "Task pre-migrazione")
+        self.assertEqual(reopened.get_default_timezone(), "Europe/Rome")
+        with sqlite3.connect(self.database_path) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
 
     def test_version_one_database_migrates_without_losing_missions(self) -> None:
         legacy_database_path = (
@@ -71,7 +100,7 @@ class PlanningEngineTests(unittest.TestCase):
 
         PlanningRepository(legacy_database_path).initialize()
         with sqlite3.connect(legacy_database_path) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
             self.assertEqual(
                 connection.execute(
                     "SELECT title FROM missions WHERE id = 'legacy-mission'"
@@ -236,7 +265,7 @@ class PlanningEngineTests(unittest.TestCase):
         repository.initialize()
 
         with sqlite3.connect(legacy_path) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
             self.assertEqual(
                 connection.execute(
                     "SELECT recurrence_series_id FROM tasks WHERE id = ?",

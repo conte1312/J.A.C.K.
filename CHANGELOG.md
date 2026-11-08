@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased — diagnostica e backup locali
+## Unreleased — preferenza fuso calendario
+
+### Aggiunto
+
+- La Pianificazione carica e salva il fuso orario predefinito del calendario tramite `GET/PUT /api/v1/planning/preferences`; il valore iniziale è `Europe/Rome`.
+- Il backend valida il fuso contro il database IANA, applica la preferenza alle query calendario senza parametro esplicito e mantiene il fuso di ogni appuntamento indipendente.
+- Migrazione planning v3→v4: aggiunge `planning_settings` e inizializza la preferenza senza modificare i task o gli eventi esistenti.
+
+### Verifica
+
+- Backend: `cd backend && .venv/bin/python -m pytest -q` — **66 passed, 4 subtests passed**.
+- Flutter: `cd jack && flutter analyze --no-pub` — **nessun problema**; `flutter test --no-pub` — **42 test superati**.
+- macOS: `cd jack && flutter build macos --no-pub` — **build riuscita** (`jack.app`, 46,9 MB).
+- Hot restart tramite VM Service riuscito; nessun errore runtime segnalato.
+
+## 2026-11-08 — diagnostica e backup locali (development)
 
 ### Aggiunto
 
@@ -28,9 +43,9 @@
 - Flutter: `cd jack && flutter test --no-pub` — **41 test superati**.
 - macOS: `cd jack && flutter build macos --no-pub` — **build riuscita** (`jack.app`, 46,9 MB); verificato hot restart.
 
-## V1.2 — Fase 2: Pianificazione (worktree, 2026-11-08)
+## V1.2 — Fase 2: Pianificazione (development, 2026-11-08)
 
-Implementazione locale non rilasciata: nessun tag, commit o push creato.
+Implementazione pubblicata sul branch di sviluppo `development`; nessun tag di release creato.
 
 ### Aggiunto
 

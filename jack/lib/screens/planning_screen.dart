@@ -67,11 +67,13 @@ class _PlanningScreenState extends State<PlanningScreen> {
       if (timezones.isEmpty) {
         throw const FormatException('Nessun fuso orario disponibile.');
       }
-      if (!timezones.contains(_timezone)) {
-        _timezone = timezones.contains('Europe/Rome')
-            ? 'Europe/Rome'
-            : timezones.first;
+      final savedTimezone = await widget.repository.getDefaultTimezone();
+      if (!timezones.contains(savedTimezone)) {
+        throw const FormatException(
+          'Il fuso orario predefinito non è disponibile nel catalogo IANA.',
+        );
       }
+      _timezone = savedTimezone;
       final range = _visibleRange;
       final results = await Future.wait<Object>([
         widget.repository.listTasks(
@@ -147,6 +149,29 @@ class _PlanningScreenState extends State<PlanningScreen> {
         'Operazione non completata. I dati non sono stati aggiornati.',
         isError: true,
       );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _changeTimezone(String timezone) async {
+    if (_saving || timezone == _timezone) return;
+    final previousTimezone = _timezone;
+    setState(() {
+      _timezone = timezone;
+      _saving = true;
+    });
+    try {
+      await widget.repository.setDefaultTimezone(timezone);
+      await _load();
+    } on LocalApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _timezone = previousTimezone);
+      _showMessage(error.message, isError: true);
+    } on Exception {
+      if (!mounted) return;
+      setState(() => _timezone = previousTimezone);
+      _showMessage('Preferenza del fuso orario non salvata.', isError: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1158,8 +1183,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
                     ],
                     onSelected: (value) {
                       if (value == null) return;
-                      setState(() => _timezone = value);
-                      unawaited(_load());
+                      unawaited(_changeTimezone(value));
                     },
                   ),
               ],

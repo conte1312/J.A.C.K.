@@ -352,6 +352,36 @@ class PlanningApiTests(unittest.TestCase):
         )
         self.assertEqual(code, 422)
 
+    def test_calendar_timezone_preference_is_validated_and_persistent(self) -> None:
+        code, preferences = self._request("GET", "/api/v1/planning/preferences")
+        self.assertEqual(code, 200)
+        self.assertEqual(preferences["timezone"], "Europe/Rome")
+
+        code, preferences = self._request(
+            "PUT",
+            "/api/v1/planning/preferences",
+            {"timezone": "America/New_York"},
+        )
+        self.assertEqual(code, 200)
+        self.assertEqual(preferences["timezone"], "America/New_York")
+
+        code, calendar = self._request(
+            "GET",
+            "/api/v1/planning/calendar?from_date=2026-11-01&to_date=2026-11-01",
+        )
+        self.assertEqual(code, 200)
+        self.assertEqual(calendar["timezone"], "America/New_York")
+
+        code, _ = self._request(
+            "PUT",
+            "/api/v1/planning/preferences",
+            {"timezone": "Mars/Olympus"},
+        )
+        self.assertEqual(code, 422)
+        code, preferences = self._request("GET", "/api/v1/planning/preferences")
+        self.assertEqual(code, 200)
+        self.assertEqual(preferences["timezone"], "America/New_York")
+
     def test_ai_proposals_require_confirmation_and_support_structured_breakdown(self) -> None:
         code, proposal = self._request(
             "POST",
