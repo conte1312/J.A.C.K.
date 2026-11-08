@@ -9,4 +9,4 @@ flutter pub get
 flutter run -d macos
 ```
 
-Il backend FastAPI è nella cartella sorella `../backend/`. L'AI Hub presente nell'app è dimostrativo e non invia richieste a provider AI.
+Il backend FastAPI è nella cartella sorella `../backend/`. L'AI Hub legge e aggiorna tramite backend la configurazione reale dei provider AI (NVIDIA, Gemini, Groq, OpenRouter, Ollama), inclusi modelli selezionati/abilitati e ordine di routing. La chat invia i messaggi a `POST /api/v1/conversations/{id}/chat` tramite il router multi-provider; conversazioni e messaggi sono persistenti in SQLite.
