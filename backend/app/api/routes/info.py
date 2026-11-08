@@ -10,6 +10,13 @@ async def info() -> dict[str, object]:
     return {
         "name": settings.app_name,
         "version": settings.version,
-        "modules": ["health", "info", "memories", "conversations", "ai"],
+        "modules": [
+            "health",
+            "info",
+            "system",
+            "memories",
+            "conversations",
+            "ai",
+            "planning",
+        ],
     }
-

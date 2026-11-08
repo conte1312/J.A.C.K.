@@ -14,7 +14,7 @@ enum JackSection {
   planning(
     'Pianificazione',
     Icons.route_outlined,
-    'Attività e promemoria sono anteprime non collegate.',
+    'Organizza attività, progetti e appuntamenti salvati localmente.',
   ),
   modules(
     'Moduli',
@@ -24,7 +24,7 @@ enum JackSection {
   settings(
     'Impostazioni',
     Icons.tune_rounded,
-    'Le preferenze dell’app saranno configurabili qui.',
+    'Controlla lo stato del backend e dei dati locali.',
   ),
   exploration(
     'Esplorazione',

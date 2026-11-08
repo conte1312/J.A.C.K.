@@ -5,6 +5,8 @@ import 'services/ai_provider_service.dart';
 import 'services/backend_status_service.dart';
 import 'services/conversation_api_service.dart';
 import 'services/memory_api_service.dart';
+import 'services/planning_api_service.dart';
+import 'services/system_monitor_service.dart';
 import 'theme/jack_theme.dart';
 
 class JackApp extends StatelessWidget {
@@ -13,6 +15,8 @@ class JackApp extends StatelessWidget {
     this.memoryRepository,
     this.aiProviderGateway,
     this.conversationRepository,
+    this.planningGateway,
+    this.systemMonitorReader,
     super.key,
   });
 
@@ -20,6 +24,8 @@ class JackApp extends StatelessWidget {
   final MemoryRepository? memoryRepository;
   final AiProviderGateway? aiProviderGateway;
   final ConversationRepository? conversationRepository;
+  final PlanningGateway? planningGateway;
+  final SystemMonitorReader? systemMonitorReader;
 
   @override
   Widget build(BuildContext context) {
@@ -31,8 +37,10 @@ class JackApp extends StatelessWidget {
         backendStatusReader: backendStatusReader,
         memoryRepository: memoryRepository,
         aiProviderGateway: aiProviderGateway,
-        conversationRepository: conversationRepository ??
-            ConversationApiService(),
+        conversationRepository:
+            conversationRepository ?? ConversationApiService(),
+        planningGateway: planningGateway,
+        systemMonitorReader: systemMonitorReader,
       ),
     );
   }

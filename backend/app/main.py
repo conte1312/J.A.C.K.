@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -28,6 +29,15 @@ from app.memory.repository import (
     MemoryRepository,
     default_memory_database_path,
 )
+from app.planning.repository import (
+    PlanningRepository,
+    default_planning_database_path,
+)
+from app.planning.service import PlanningService
+from app.planning.scheduler import run_recurrence_scheduler
+from app.system.backups import LocalBackupService
+from app.system.monitor import SystemMonitor
+from app.system.security import SecurityPosture
 
 configure_logging()
 logger = logging.getLogger("jack.backend")
@@ -38,6 +48,8 @@ def create_app(
     ai_provider_service: AiProviderService | None = None,
     conversation_repository: ConversationRepository | None = None,
     conversation_service: ConversationService | None = None,
+    planning_repository: PlanningRepository | None = None,
+    planning_service: PlanningService | None = None,
 ) -> FastAPI:
     repository = memory_repository or MemoryRepository(default_memory_database_path())
     provider_service = ai_provider_service or AiProviderService()
@@ -50,6 +62,12 @@ def create_app(
         ai_provider_service=provider_service,
     )
 
+    planning_repo = planning_repository or PlanningRepository(
+        default_planning_database_path()
+    )
+    planning_service_instance = planning_service or PlanningService(
+        repository=planning_repo
+    )
     # Nuovo sistema multi-provider
     from app.ai.provider_registry import registry as _provider_registry
 
@@ -68,6 +86,10 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         repository.initialize()
         conversation_store.initialize()
+        planning_repo.initialize()
+        recurrence_scheduler = asyncio.create_task(
+            run_recurrence_scheduler(planning_service_instance)
+        )
         logger.info(
             "Starting %s v%s on %s:%s",
             settings.app_name,
@@ -75,8 +97,15 @@ def create_app(
             settings.host,
             settings.port,
         )
-        yield
-        logger.info("Stopping %s", settings.app_name)
+        try:
+            yield
+        finally:
+            recurrence_scheduler.cancel()
+            try:
+                await recurrence_scheduler
+            except asyncio.CancelledError:
+                pass
+            logger.info("Stopping %s", settings.app_name)
 
     app = FastAPI(
         title=settings.app_name,
@@ -101,6 +130,22 @@ def create_app(
     app.state.ai_provider_service = provider_service
     app.state.conversation_repository = conversation_store
     app.state.conversation_service = conversation_service_instance
+    app.state.planning_repository = planning_repo
+    app.state.planning_service = planning_service_instance
+    app.state.system_monitor = SystemMonitor(
+        {
+            "Memoria e conversazioni": repository.database_path,
+            "Pianificazione": planning_repo.database_path,
+        }
+    )
+    app.state.backup_service = LocalBackupService(
+        {
+            "Memoria e conversazioni": repository.database_path,
+            "Pianificazione": planning_repo.database_path,
+        },
+        repository.database_path.parent / "backups",
+    )
+    app.state.security_posture = SecurityPosture(settings)
     app.state.ai_router = ai_router_instance
     app.state.ai_orchestrator_service = orchestrator_service
     app.state.cost_guard = cost_guard
