@@ -17,6 +17,8 @@ from app.control_plane.repository import (
     default_control_plane_database_path,
 )
 from app.control_plane.service import ControlPlaneService
+from app.control_plane.authorization import AuthorizationService
+from app.control_plane.routes import router as control_plane_router
 from app.ai.credential_manager import CredentialManager
 from app.ai.cost_guard import CostGuard
 from app.ai.multi_preferences import AiMultiPreferencesStore
@@ -25,6 +27,7 @@ from app.ai.router_service import AiRouter
 from app.ai.routes import ai_router, chat_router
 from app.ai.service import AiProviderService
 from app.api.router import api_router
+from app.api.routes.memories import router as memories_router
 from app.api.routes.health import router as health_router
 from app.conversations.repository import ConversationRepository
 from app.conversations.service import ConversationService
@@ -34,6 +37,19 @@ from app.memory.repository import (
     MemoryRepository,
     default_memory_database_path,
 )
+from app.knowledge.repository import (
+    KnowledgeRepository,
+    default_knowledge_database_path,
+)
+from app.knowledge.context_builder import ContextBuilder
+from app.knowledge.embeddings import LocalEmbeddingProvider
+try:
+    from app.knowledge.embeddings import SentenceTransformerEmbeddingProvider
+    _HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    _HAS_SENTENCE_TRANSFORMERS = False
+from app.knowledge.graph_service import KnowledgeGraphService
+from app.knowledge.vector_store import VectorStore
 from app.planning.repository import (
     PlanningRepository,
     default_planning_database_path,
@@ -57,15 +73,54 @@ def create_app(
     planning_service: PlanningService | None = None,
     control_plane_repository: ControlPlaneRepository | None = None,
     control_plane_service: ControlPlaneService | None = None,
+    knowledge_repository: KnowledgeRepository | None = None,
+    vector_store: VectorStore | None = None,
+    embedding_provider: LocalEmbeddingProvider | None = None,
 ) -> FastAPI:
     repository = memory_repository or MemoryRepository(default_memory_database_path())
+    knowledge_repo = knowledge_repository or KnowledgeRepository(
+        default_knowledge_database_path()
+    )
+    vector_store = vector_store or VectorStore(
+        default_knowledge_database_path().parent
+        / "knowledge_embeddings.sqlite3"
+    )
+    if embedding_provider is None:
+        if _HAS_SENTENCE_TRANSFORMERS:
+            try:
+                embedding_provider = SentenceTransformerEmbeddingProvider()
+                # Force load to verify sentence-transformers is actually installed
+                _ = embedding_provider.dimensions
+                logger.info(
+                    "Using sentence-transformers embedding provider: %s",
+                    embedding_provider.model_name,
+                )
+            except ImportError:
+                embedding_provider = LocalEmbeddingProvider()
+                logger.info(
+                    "Using local hash embedding provider (install sentence-transformers "
+                    "for semantic embeddings)"
+                )
+        else:
+            embedding_provider = LocalEmbeddingProvider()
+            logger.info(
+                "Using local hash embedding provider (install sentence-transformers "
+                "for semantic embeddings)"
+            )
     provider_service = ai_provider_service or AiProviderService()
     conversation_store = conversation_repository or ConversationRepository(
         default_memory_database_path()
     )
+    graph_service = KnowledgeGraphService(repository=knowledge_repo)
+    context_builder = ContextBuilder(
+        repository=knowledge_repo,
+        graph_service=graph_service,
+    )
     conversation_service_instance = conversation_service or ConversationService(
         conversation_repository=conversation_store,
         memory_repository=repository,
+        knowledge_repository=knowledge_repo,
+        context_builder=context_builder,
         ai_provider_service=provider_service,
     )
 
@@ -81,6 +136,7 @@ def create_app(
     control_plane_service_instance = control_plane_service or ControlPlaneService(
         control_plane_repo
     )
+    authorization_service_instance = AuthorizationService(control_plane_repo)
     # Nuovo sistema multi-provider
     from app.ai.provider_registry import registry as _provider_registry
 
@@ -98,6 +154,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         repository.initialize()
+        knowledge_repo.initialize()
         conversation_store.initialize()
         planning_repo.initialize()
         control_plane_repo.initialize()
@@ -141,6 +198,9 @@ def create_app(
         )
 
     app.state.memory_repository = repository
+    app.state.knowledge_repository = knowledge_repo
+    app.state.vector_store = vector_store
+    app.state.embedding_provider = embedding_provider
     app.state.ai_provider_service = provider_service
     app.state.conversation_repository = conversation_store
     app.state.conversation_service = conversation_service_instance
@@ -148,9 +208,11 @@ def create_app(
     app.state.planning_service = planning_service_instance
     app.state.control_plane_repository = control_plane_repo
     app.state.control_plane_service = control_plane_service_instance
+    app.state.authorization_service = authorization_service_instance
     app.state.system_monitor = SystemMonitor(
         {
             "Memoria e conversazioni": repository.database_path,
+            "Conoscenza": knowledge_repo.database_path,
             "Pianificazione": planning_repo.database_path,
             "Control Plane": control_plane_repo.database_path,
         }
@@ -158,6 +220,7 @@ def create_app(
     app.state.backup_service = LocalBackupService(
         {
             "Memoria e conversazioni": repository.database_path,
+            "Conoscenza": knowledge_repo.database_path,
             "Pianificazione": planning_repo.database_path,
             "Control Plane": control_plane_repo.database_path,
         },
@@ -169,8 +232,10 @@ def create_app(
     app.state.ai_orchestrator_service = orchestrator_service
     app.state.cost_guard = cost_guard
     app.include_router(health_router)
-    app.include_router(api_router, prefix="/api/v1")
+    app.include_router(api_router, prefix="/api")
+    app.include_router(memories_router, prefix="/api/v1")
     app.include_router(chat_router)
+    app.include_router(control_plane_router, prefix="/api/v2")
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):

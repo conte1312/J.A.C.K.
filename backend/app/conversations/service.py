@@ -9,7 +9,10 @@ from app.conversations.repository import (
     ConversationNotFoundError,
     ConversationRepository,
 )
+from app.knowledge.context_builder import ContextBuilder
+from app.knowledge.context_resolver import ContextualResolver
 from app.memory.repository import MemoryRepository
+from app.knowledge.repository import KnowledgeRepository
 
 logger = logging.getLogger("jack.backend.conversations")
 
@@ -37,10 +40,14 @@ class ConversationService:
         *,
         conversation_repository: ConversationRepository,
         memory_repository: MemoryRepository | None = None,
+        knowledge_repository: KnowledgeRepository | None = None,
+        context_builder: ContextBuilder | None = None,
         ai_provider_service: AiProviderService | None = None,
     ) -> None:
         self.conversation_repository = conversation_repository
         self.memory_repository = memory_repository
+        self.knowledge_repository = knowledge_repository
+        self.context_builder = context_builder
         self.ai_provider_service = ai_provider_service
 
     def create_conversation(
@@ -182,6 +189,7 @@ class ConversationService:
         model_id: str | None,
         messages: list[dict[str, str]],
         memory_repository: MemoryRepository,
+        knowledge_repository: KnowledgeRepository | None = None,
     ) -> dict[str, str]:
         """Invia una richiesta al provider con contesto conversazione + memoria.
 
@@ -220,6 +228,37 @@ class ConversationService:
         for block in context.get("context_blocks", []):
             model_messages.append({"role": "system", "content": block})
         model_messages.extend(context.get("history", []))
+
+        # Aggiungi contesto da Knowledge Engine (M4) tramite ContextBuilder
+        knowledge_repo = knowledge_repository or self.knowledge_repository
+        if self.context_builder is not None and user_message:
+            context_package = self.context_builder.build_context(
+                query=user_message,
+                domain_id=None,
+                max_items=3,
+                include_personal=False,
+            )
+            for item in context_package.items:
+                model_messages.append(
+                    {
+                        "role": "system",
+                        "content": f"Conoscenza ({item.item_state}): {item.title} — {item.content}",
+                    }
+                )
+        elif knowledge_repo is not None and user_message:
+            knowledge_items = knowledge_repo.list_items(
+                query=user_message,
+                item_state="published",
+                verification_status="verified",
+                limit=3,
+            )
+            for item in knowledge_items:
+                model_messages.append(
+                    {
+                        "role": "system",
+                        "content": f"Conoscenza ({item.get('knowledge_type', 'concept')}): {item.get('title', '')} — {item.get('content', '')}",
+                    }
+                )
 
         effective_model_id = model_id or conversation.get("model_id")
         if not effective_model_id:

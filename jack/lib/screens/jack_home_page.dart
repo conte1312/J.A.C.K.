@@ -9,17 +9,12 @@ import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../models/memory.dart';
 import '../models/jack_section.dart';
-import '../models/planning.dart';
 import '../screens/ai_hub_screen.dart';
-import '../screens/planning_screen.dart';
-import '../screens/system_monitor_screen.dart';
 import '../services/ai_provider_service.dart';
 import '../services/backend_status_service.dart';
 import '../services/conversation_api_service.dart';
 import '../services/local_api_client.dart';
 import '../services/memory_api_service.dart';
-import '../services/planning_api_service.dart';
-import '../services/system_monitor_service.dart';
 import '../theme/jack_theme.dart';
 import '../widgets/chat_panel.dart';
 import '../widgets/jack_primitives.dart';
@@ -38,8 +33,6 @@ class JackHomePage extends StatefulWidget {
     this.memoryRepository,
     this.aiProviderGateway,
     this.conversationRepository,
-    this.planningGateway,
-    this.systemMonitorReader,
     super.key,
   });
 
@@ -47,8 +40,6 @@ class JackHomePage extends StatefulWidget {
   final MemoryRepository? memoryRepository;
   final AiProviderGateway? aiProviderGateway;
   final ConversationRepository? conversationRepository;
-  final PlanningGateway? planningGateway;
-  final SystemMonitorReader? systemMonitorReader;
 
   @override
   State<JackHomePage> createState() => _JackHomePageState();
@@ -58,8 +49,6 @@ class _JackHomePageState extends State<JackHomePage> {
   late final BackendStatusReader _backendReader;
   late final AiProviderGateway _aiGateway;
   late final ConversationRepository _conversationRepository;
-  late final PlanningGateway _planningGateway;
-  late final SystemMonitorReader _systemMonitorReader;
   Timer? _backendPollTimer;
   BackendConnectionState _backendState = BackendConnectionState.loading;
   BackendSnapshot? _backendSnapshot;
@@ -92,9 +81,6 @@ class _JackHomePageState extends State<JackHomePage> {
     _aiGateway = widget.aiProviderGateway ?? AiProviderService();
     _conversationRepository =
         widget.conversationRepository ?? ConversationApiService();
-    _planningGateway = widget.planningGateway ?? PlanningApiService();
-    _systemMonitorReader =
-        widget.systemMonitorReader ?? SystemMonitorApiService();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshBackend());
     unawaited(_loadAiConfiguration());
     unawaited(_loadConversations());
@@ -181,38 +167,34 @@ class _JackHomePageState extends State<JackHomePage> {
   }
 
   JackCoreGraph _memoryGraphToJackCoreGraph(MemoryGraph graph) {
-    final nodes = graph.nodes
-        .map((memory) {
-          return JackCoreNode(
-            id: memory.id,
-            title: memory.title,
-            content: memory.content,
-            category: _memoryCategoryToJackCore(memory.category),
-            sourceType: _memorySourceTypeToJackCore(memory.sourceType),
-            source: memory.source ?? 'Memoria locale',
-            verification: _memoryVerificationToJackCore(memory.verification),
-            tags: memory.tags,
-            importance: memory.importance,
-            excluded: memory.excluded,
-            conversationId: memory.conversationId,
-            lastUsed: memory.lastUsed,
-            shell: memory.excluded
-                ? JackCoreShell.surface
-                : JackCoreShell.interior,
-          );
-        })
-        .toList(growable: false);
-    final edges = graph.edges
-        .map((link) {
-          return JackCoreEdge(
-            id: link.id,
-            fromId: link.fromId,
-            toId: link.toId,
-            relation: link.relation,
-            strength: link.strength,
-          );
-        })
-        .toList(growable: false);
+    final nodes = graph.nodes.map((memory) {
+      return JackCoreNode(
+        id: memory.id,
+        title: memory.title,
+        content: memory.content,
+        category: _memoryCategoryToJackCore(memory.category),
+        sourceType: _memorySourceTypeToJackCore(memory.sourceType),
+        source: memory.source ?? 'Memoria locale',
+        verification: _memoryVerificationToJackCore(memory.verification),
+        tags: memory.tags,
+        importance: memory.importance,
+        excluded: memory.excluded,
+        conversationId: memory.conversationId,
+        lastUsed: memory.lastUsed,
+        shell: memory.excluded
+            ? JackCoreShell.surface
+            : JackCoreShell.interior,
+      );
+    }).toList(growable: false);
+    final edges = graph.edges.map((link) {
+      return JackCoreEdge(
+        id: link.id,
+        fromId: link.fromId,
+        toId: link.toId,
+        relation: link.relation,
+        strength: link.strength,
+      );
+    }).toList(growable: false);
     return JackCoreGraph(
       nodes: nodes,
       edges: edges,
@@ -227,7 +209,9 @@ class _JackHomePageState extends State<JackHomePage> {
     );
   }
 
-  JackCoreSourceType _memorySourceTypeToJackCore(MemorySourceType sourceType) {
+  JackCoreSourceType _memorySourceTypeToJackCore(
+    MemorySourceType sourceType,
+  ) {
     return JackCoreSourceType.values.firstWhere(
       (s) => s.name == sourceType.name,
       orElse: () => JackCoreSourceType.saved,
@@ -309,13 +293,16 @@ class _JackHomePageState extends State<JackHomePage> {
           backgroundColor: const Color(0xFF572D2B),
           duration: const Duration(seconds: 4),
           action: onRetry != null
-              ? SnackBarAction(label: 'Apri AI Hub', onPressed: onRetry)
-              : retryText != null
               ? SnackBarAction(
-                  label: 'Riprova',
-                  onPressed: () => unawaited(_sendMessage(retryText)),
+                  label: 'Apri AI Hub',
+                  onPressed: onRetry,
                 )
-              : null,
+              : retryText != null
+                  ? SnackBarAction(
+                      label: 'Riprova',
+                      onPressed: () => unawaited(_sendMessage(retryText)),
+                    )
+                  : null,
         ),
       );
   }
@@ -386,19 +373,19 @@ class _JackHomePageState extends State<JackHomePage> {
     return _toChatMessages(_activeConversationWithMessages!.messages);
   }
 
-  List<ChatMessage> _toChatMessages(List<ConversationMessage> messages) {
+  List<ChatMessage> _toChatMessages(
+    List<ConversationMessage> messages,
+  ) {
     return messages
-        .map(
-          (message) => ChatMessage(
-            id: message.id,
-            author: message.isUser ? MessageAuthor.user : MessageAuthor.jack,
-            time: TimeOfDay.fromDateTime(message.createdAt).format(context),
-            text: message.content,
-            createdAt: message.createdAt,
-            isDemo: message.isDemo,
-            providerLabel: message.providerLabel,
-          ),
-        )
+        .map((message) => ChatMessage(
+          id: message.id,
+          author: message.isUser ? MessageAuthor.user : MessageAuthor.jack,
+          time: TimeOfDay.fromDateTime(message.createdAt).format(context),
+          text: message.content,
+          createdAt: message.createdAt,
+          isDemo: message.isDemo,
+          providerLabel: message.providerLabel,
+        ))
         .toList(growable: false);
   }
 
@@ -408,7 +395,8 @@ class _JackHomePageState extends State<JackHomePage> {
     if (!_aiAvailable) {
       if (_noProvidersConfigured) {
         _showChatError(
-          message: 'Nessun provider AI configurato. Apri l’AI Hub per configurare un provider gratuito (es. Ollama locale, Gemini, Groq o OpenRouter).',
+          message:
+              'Nessun provider AI configurato. Apri l’AI Hub per configurare un provider gratuito (es. Ollama locale, Gemini, Groq o OpenRouter).',
           onRetry: () => _selectSection(JackSection.modules),
         );
       } else {
@@ -451,10 +439,10 @@ class _JackHomePageState extends State<JackHomePage> {
       _selectedSection = JackSection.conversations;
     });
     try {
-      final loaded = await _conversationRepository.getConversation(id);
+      final loaded =
+          await _conversationRepository.getConversation(id);
       if (!mounted) return;
-      final resolved =
-          loaded ??
+      final resolved = loaded ??
           ConversationWithMessages(
             conversation: _conversations.firstWhere(
               (c) => c.id == id,
@@ -471,23 +459,21 @@ class _JackHomePageState extends State<JackHomePage> {
       setState(() {
         _activeConversationWithMessages = resolved;
         // Aggiorna message_count nella lista.
-        _conversations = _conversations
-            .map((c) {
-              if (c.id == id) {
-                return Conversation(
-                  id: c.id,
-                  title: c.title,
-                  createdAt: c.createdAt,
-                  updatedAt: c.updatedAt,
-                  providerId: c.providerId,
-                  modelId: c.modelId,
-                  metadata: c.metadata,
-                  messageCount: resolved.messages.length,
-                );
-              }
-              return c;
-            })
-            .toList(growable: false);
+        _conversations = _conversations.map((c) {
+          if (c.id == id) {
+            return Conversation(
+              id: c.id,
+              title: c.title,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+              providerId: c.providerId,
+              modelId: c.modelId,
+              metadata: c.metadata,
+              messageCount: resolved.messages.length,
+            );
+          }
+          return c;
+        }).toList(growable: false);
       });
     } on LocalApiException catch (error) {
       if (!mounted) return;
@@ -509,7 +495,8 @@ class _JackHomePageState extends State<JackHomePage> {
       // Nessuna conversazione attiva: ne crea una se il backend è disponibile.
       if (!_aiAvailable) {
         _showChatError(
-          message: 'Backend locale non disponibile. Avvia J.A.C.K. Backend e riprova.',
+          message:
+              'Backend locale non disponibile. Avvia J.A.C.K. Backend e riprova.',
         );
         return;
       }
@@ -530,18 +517,19 @@ class _JackHomePageState extends State<JackHomePage> {
         message =
             'Backend locale non disponibile. Avvia J.A.C.K. Backend e riprova.';
       } else if (_aiLoading) {
-        message =
-            'Caricamento della configurazione AI… riprova tra un istante.';
+        message = 'Caricamento della configurazione AI… riprova tra un istante.';
       } else if (_aiConfiguration == null) {
         message = _aiError ?? 'Impossibile leggere la configurazione AI.';
       } else if (_noProvidersConfigured) {
         _showChatError(
-          message: 'Nessun provider AI configurato. Configura un provider gratuito (es. Ollama locale, Gemini, Groq o OpenRouter) nell’AI Hub.',
+          message:
+              'Nessun provider AI configurato. Configura un provider gratuito (es. Ollama locale, Gemini, Groq o OpenRouter) nell’AI Hub.',
           onRetry: () => _selectSection(JackSection.modules),
         );
         return;
       } else if (_aiConfiguration!.selectedProvider == null) {
-        message = 'Seleziona un provider AI nell’AI Hub.';
+        message =
+            'Seleziona un provider AI nell’AI Hub.';
       } else if (!_aiConfiguration!.selectedProvider!.configured) {
         message =
             'Configura la chiave API del provider selezionato nell’AI Hub.';
@@ -561,8 +549,7 @@ class _JackHomePageState extends State<JackHomePage> {
       if (!mounted) return;
 
       setState(() {
-        _activeConversationWithMessages =
-            _activeConversationWithMessages != null
+        _activeConversationWithMessages = _activeConversationWithMessages != null
             ? ConversationWithMessages(
                 conversation: _activeConversationWithMessages!.conversation,
                 messages: [
@@ -571,31 +558,27 @@ class _JackHomePageState extends State<JackHomePage> {
                 ],
               )
             : null;
-        _conversations = _conversations
-            .map((c) {
-              if (c.id == _activeConversationId) {
-                return Conversation(
-                  id: c.id,
-                  title: c.title,
-                  createdAt: c.createdAt,
-                  updatedAt: c.updatedAt,
-                  providerId: c.providerId,
-                  modelId: c.modelId,
-                  metadata: c.metadata,
-                  messageCount: c.messageCount + 1,
-                );
-              }
-              return c;
-            })
-            .toList(growable: false);
+        _conversations = _conversations.map((c) {
+          if (c.id == _activeConversationId) {
+            return Conversation(
+              id: c.id,
+              title: c.title,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+              providerId: c.providerId,
+              modelId: c.modelId,
+              metadata: c.metadata,
+              messageCount: c.messageCount + 1,
+            );
+          }
+          return c;
+        }).toList(growable: false);
         _isSending = true;
       });
       _scrollToBottom();
 
-      if (await _tryHandlePlanningIntent(text)) return;
-
-      final history =
-          _activeConversationWithMessages?.messages ?? <ConversationMessage>[];
+      final history = _activeConversationWithMessages?.messages ??
+          <ConversationMessage>[];
       final response = await _conversationRepository.chatInConversation(
         conversationId: _activeConversationId!,
         modelId: _aiConfiguration!.selectedModel!.id,
@@ -604,8 +587,7 @@ class _JackHomePageState extends State<JackHomePage> {
       if (!mounted) return;
 
       setState(() {
-        _activeConversationWithMessages =
-            _activeConversationWithMessages != null
+        _activeConversationWithMessages = _activeConversationWithMessages != null
             ? ConversationWithMessages(
                 conversation: _activeConversationWithMessages!.conversation,
                 messages: [
@@ -622,23 +604,21 @@ class _JackHomePageState extends State<JackHomePage> {
                 ],
               )
             : null;
-        _conversations = _conversations
-            .map((c) {
-              if (c.id == _activeConversationId) {
-                return Conversation(
-                  id: c.id,
-                  title: c.title,
-                  createdAt: c.createdAt,
-                  updatedAt: c.updatedAt,
-                  providerId: c.providerId,
-                  modelId: c.modelId,
-                  metadata: c.metadata,
-                  messageCount: c.messageCount + 1,
-                );
-              }
-              return c;
-            })
-            .toList(growable: false);
+        _conversations = _conversations.map((c) {
+          if (c.id == _activeConversationId) {
+            return Conversation(
+              id: c.id,
+              title: c.title,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+              providerId: c.providerId,
+              modelId: c.modelId,
+              metadata: c.metadata,
+              messageCount: c.messageCount + 1,
+            );
+          }
+          return c;
+        }).toList(growable: false);
         _isSending = false;
       });
       _scrollToBottom();
@@ -650,158 +630,11 @@ class _JackHomePageState extends State<JackHomePage> {
       if (!mounted) return;
       setState(() => _isSending = false);
       _showChatError(
-        message: 'La risposta dell’assistente non è stata ricevuta. Riprova.',
+        message:
+            'La risposta dell’assistente non è stata ricevuta. Riprova.',
         retryText: text,
       );
     }
-  }
-
-  bool _mayBePlanningIntent(String text) {
-    final normalized = text.toLowerCase();
-    return const [
-      'attività',
-      'attivita',
-      'task',
-      'progetto',
-      'obiettivo',
-      'scadenza',
-      'in ritardo',
-      'priorità',
-      'priorita',
-      'organizza la mia giornata',
-      'suddividi',
-    ].any(normalized.contains);
-  }
-
-  Future<bool> _tryHandlePlanningIntent(String text) async {
-    if (!_mayBePlanningIntent(text)) return false;
-    final proposal = await _planningGateway.interpret(text);
-    if (!proposal.understood ||
-        proposal.proposalId == null ||
-        proposal.operations.isEmpty) {
-      return false;
-    }
-    if (!mounted) return false;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: JackPalette.panel,
-        title: const Text('Conferma operazioni di pianificazione'),
-        content: SizedBox(
-          width: 460,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(proposal.message),
-              const SizedBox(height: 12),
-              for (final operation in proposal.operations)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text('• ${operation['label'] ?? operation['op']}'),
-                ),
-              const Text(
-                'Le modifiche saranno validate e applicate dal backend solo dopo la conferma.',
-                style: TextStyle(color: JackPalette.muted, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annulla'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Conferma'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || confirmed != true) return false;
-
-    final results = await _planningGateway.applyProposal(
-      proposalId: proposal.proposalId!,
-      confirmed: true,
-    );
-    final responseText = _planningResponse(proposal, results);
-    final assistantMessage = await _conversationRepository.addMessage(
-      _activeConversationId!,
-      ConversationMessageDraft(role: 'assistant', content: responseText),
-    );
-    if (!mounted) return true;
-
-    setState(() {
-      if (_activeConversationWithMessages != null) {
-        _activeConversationWithMessages = ConversationWithMessages(
-          conversation: _activeConversationWithMessages!.conversation,
-          messages: [
-            ..._activeConversationWithMessages!.messages,
-            assistantMessage,
-          ],
-        );
-      }
-      _conversations = _conversations
-          .map((conversation) {
-            if (conversation.id != _activeConversationId) return conversation;
-            return Conversation(
-              id: conversation.id,
-              title: conversation.title,
-              createdAt: conversation.createdAt,
-              updatedAt: conversation.updatedAt,
-              providerId: conversation.providerId,
-              modelId: conversation.modelId,
-              metadata: conversation.metadata,
-              messageCount: conversation.messageCount + 1,
-            );
-          })
-          .toList(growable: false);
-      _isSending = false;
-    });
-    _scrollToBottom();
-    return true;
-  }
-
-  String _planningResponse(
-    PlanningAiProposal proposal,
-    List<Map<String, dynamic>> results,
-  ) {
-    final lines = <String>[];
-    for (final result in results) {
-      final operation = result['op'];
-      final value = result['result'];
-      if (operation == 'list_overdue' || operation == 'list_today') {
-        final tasks = value is List
-            ? value.whereType<Map<String, dynamic>>().toList()
-            : const <Map<String, dynamic>>[];
-        if (tasks.isEmpty) {
-          lines.add(
-            operation == 'list_overdue'
-                ? 'Nessuna attività in ritardo.'
-                : 'Nessuna attività con scadenza oggi.',
-          );
-        } else {
-          lines.addAll(
-            tasks.map(
-              (task) =>
-                  '• ${task['title']}'
-                  '${task['due_date'] == null ? '' : ' — ${task['due_date']}'}'
-                  '${task['priority'] == null ? '' : ' · ${task['priority']}'}',
-            ),
-          );
-        }
-      } else if (value is Map<String, dynamic>) {
-        final label = operation == 'create_project'
-            ? 'Progetto creato'
-            : operation == 'update_task'
-            ? 'Attività aggiornata'
-            : 'Attività creata';
-        lines.add('$label: ${value['title'] ?? value['name'] ?? ''}.');
-      }
-    }
-    return lines.isEmpty ? proposal.message : lines.join('\n');
   }
 
   void _showLocalNotice(String text) {
@@ -877,48 +710,54 @@ class _JackHomePageState extends State<JackHomePage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: switch (_selectedSection) {
-                              JackSection.conversations => Column(
-                                children: [
-                                  if (_noProvidersConfigured)
-                                    _NoProviderNotice(
-                                      onConfigureProvider: () =>
-                                          _selectSection(JackSection.modules),
+                              JackSection.conversations =>
+                                Column(
+                                  children: [
+                                    if (_noProvidersConfigured)
+                                      _NoProviderNotice(
+                                        onConfigureProvider: () =>
+                                            _selectSection(
+                                              JackSection.modules,
+                                            ),
+                                      ),
+                                    Expanded(
+                                      child: _ConversationWorkspace(
+                                        conversationTitle:
+                                            _activeConversationTitle ??
+                                            'Nuova conversazione',
+                                        selectedCoreNode:
+                                            _selectedCoreNode,
+                                        onCoreNodeSelected:
+                                            _selectCoreNode,
+                                        onOpenCorePreview: _openCorePreview,
+                                        showPreviewButton: !showRightRail,
+                                        messages: _chatMessages,
+                                        inputController: _inputController,
+                                        scrollController:
+                                            _messageScrollController,
+                                        onSend: _sendMessage,
+                                        isGenerating: _isSending,
+                                        activeModelLabel: _aiAvailable
+                                            ? _aiConfiguration!
+                                                .selectedModel!.name
+                                            : null,
+                                        inputEnabled: !_isSending,
+                                        onExplore: () =>
+                                            _selectSection(
+                                              JackSection.exploration,
+                                            ),
+                                        onAttachment: () =>
+                                            _showLocalNotice(
+                                              'Gli allegati non sono ancora supportati.',
+                                            ),
+                                        onVoice: () => _showLocalNotice(
+                                          'L’input vocale non è collegato.',
+                                        ),
+                                        graph: _liveGraph ?? JackCoreGraph.empty,
+                                      ),
                                     ),
-                                  Expanded(
-                                    child: _ConversationWorkspace(
-                                      conversationTitle:
-                                          _activeConversationTitle ??
-                                          'Nuova conversazione',
-                                      selectedCoreNode: _selectedCoreNode,
-                                      onCoreNodeSelected: _selectCoreNode,
-                                      onOpenCorePreview: _openCorePreview,
-                                      showPreviewButton: !showRightRail,
-                                      messages: _chatMessages,
-                                      inputController: _inputController,
-                                      scrollController:
-                                          _messageScrollController,
-                                      onSend: _sendMessage,
-                                      isGenerating: _isSending,
-                                      activeModelLabel: _aiAvailable
-                                          ? _aiConfiguration!
-                                                .selectedModel!
-                                                .name
-                                          : null,
-                                      inputEnabled: !_isSending,
-                                      onExplore: () => _selectSection(
-                                        JackSection.exploration,
-                                      ),
-                                      onAttachment: () => _showLocalNotice(
-                                        'Gli allegati non sono ancora supportati.',
-                                      ),
-                                      onVoice: () => _showLocalNotice(
-                                        'L’input vocale non è collegato.',
-                                      ),
-                                      graph: _liveGraph ?? JackCoreGraph.empty,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
                               JackSection.modules => AiHubScreen(
                                 providerGateway: _aiGateway,
                                 onReturn: () =>
@@ -928,14 +767,6 @@ class _JackHomePageState extends State<JackHomePage> {
                                 repository: widget.memoryRepository,
                                 onMemoryChanged: () =>
                                     unawaited(_loadLiveGraph()),
-                              ),
-                              JackSection.planning => PlanningScreen(
-                                repository: _planningGateway,
-                                onOpenChat: () =>
-                                    _selectSection(JackSection.conversations),
-                              ),
-                              JackSection.settings => SystemMonitorScreen(
-                                reader: _systemMonitorReader,
                               ),
                               _ => _SectionPlaceholder(
                                 section: _selectedSection,

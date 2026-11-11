@@ -32,6 +32,13 @@ J.A.C.K. ("Just Another Chill Kernel") è un prototipo desktop privato per macOS
 10. **Non esporre API key nei log, nel codice o nel database.** Le credenziali restano nel Keychain macOS.
 11. **Non inventare API key, credenziali, risultati di test o funzionalità non implementate.**
 12. **Non eseguire commit o push Git senza autorizzazione.**
+13. **Ogni modifica a funzionalità, API, architettura, database, configurazioni, dipendenze, UI o test deve essere accompagnata dall'aggiornamento di `docs/JACK_COMPLETE_SPEC.md` nello stesso gruppo di lavoro.**
+
+## Documentazione tecnica
+
+- `docs/JACK_COMPLETE_SPEC.md`: fonte di verità tecnica e funzionale (architettura, API, database, moduli, test, limiti, roadmap).
+- `docs/DEVELOPMENT_LOG.md`: log cronologico delle modifiche significative.
+- `AGENTS.md`: regole permanenti per agenti di sviluppo (questo file).
 
 ## Come avviare
 
@@ -92,6 +99,12 @@ flutter test --no-pub
 | Indicatore stato backend | Implementato | `/health`, `/api/v1/info` |
 | macOS Keychain per credenziali | Implementato (backend) | Chiave per provider; fallback `.env` |
 | Protezione contro costi involontari | Implementato | Solo modelli gratuiti, nessun fallback premium |
+| Context Builder M4.6 (ContextualResolver + KnowledgeRepository) | Implementato | Cablato in ConversationService, token budget, provenienza, verifica |
+| Knowledge Graph M4.5 (estrazione, relazioni, approvazione) | Implementato | GraphExtractor, GraphService, route /knowledge-graph/* |
+| Semantic Retrieval M4.4 (embeddings, vector store, hybrid search) | Implementato | Fallback hash-based; SentenceTransformer non installato |
+| Document Intelligence M4.3 (import locale file) | Implementato | Parsing, chunking, import documento |
+| Validation & Maintenance M4.7 | Implementato | Duplicati, stale, orfani, provenance, integrità DB |
+| Flutter Navigation M4.8 (5 schermate Knowledge) | Implementato | Dashboard → Esplora, Grafo, Documenti, Approvazioni |
 | Packaging/firma/distribuzione macOS | Pianificato | Non parte della V1 |
 
 ## Convenzioni di codice
