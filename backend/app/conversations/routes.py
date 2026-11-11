@@ -17,6 +17,7 @@ from app.conversations.schemas import (
 )
 from app.conversations.service import ConversationService
 from app.memory.repository import MemoryRepository
+from app.knowledge.repository import KnowledgeRepository
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -33,6 +34,13 @@ def get_memory_repository(request: Request) -> MemoryRepository:
 
 
 MemoryRepo = Annotated[MemoryRepository, Depends(get_memory_repository)]
+
+
+def get_knowledge_repository(request: Request) -> KnowledgeRepository:
+    return request.app.state.knowledge_repository
+
+
+KnowledgeRepo = Annotated[KnowledgeRepository, Depends(get_knowledge_repository)]
 
 
 def _not_found() -> HTTPException:
@@ -178,6 +186,7 @@ async def chat_in_conversation(
     payload: ChatInput,
     service: Service,
     memory_repository: MemoryRepo,
+    knowledge_repository: KnowledgeRepo,
 ) -> dict[str, str]:
     try:
         return await service.chat_with_context(
@@ -185,6 +194,7 @@ async def chat_in_conversation(
             model_id=payload.model_id,
             messages=[turn.model_dump() for turn in payload.messages],
             memory_repository=memory_repository,
+            knowledge_repository=knowledge_repository,
         )
     except AiServiceError as error:
         raise HTTPException(

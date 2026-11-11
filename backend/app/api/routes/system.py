@@ -4,7 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.system.backups import LocalBackupService
+from app.system.backups import (
+    LocalBackupService,
+    BackupRestoreError,
+)
 from app.system.monitor import SystemMonitor
 from app.system.security import SecurityPosture
 from app.system.timezones import list_timezones
@@ -68,3 +71,31 @@ def validate_local_backup(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post(
+    "/backups/{filename}/restore",
+    status_code=status.HTTP_200_OK,
+)
+def restore_local_backup(
+    filename: str,
+    confirm: bool = False,
+    service: BackupService = ...,
+) -> dict[str, object]:
+    """Ripristina un backup precedente.
+
+    Richiede ``confirm=true`` per eseguire l'operazione distruttiva.
+    Prima del ripristino viene creato un backup di sicurezza dello stato
+    corrente e, in caso di fallimento, viene tentato il rollback automatico.
+    """
+    try:
+        return service.restore_backup(filename, confirm=confirm)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except BackupRestoreError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(error),
+        ) from error

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -161,3 +161,131 @@ class AgentProfileRead(ControlPlaneWrite):
 
 class AgentProfileDetailRead(AgentProfileRead):
     profile_markdown: str
+
+
+# ---------------------------------------------------------------------------
+# Agent-to-mission assignments (M5 Punto 3)
+# ---------------------------------------------------------------------------
+
+class AgentAssignmentCreate(ControlPlaneWrite):
+    agent_kind: IdentityKindValue
+    agent_id: str = Field(min_length=2, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+    mission_id: str = Field(min_length=2, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+    assigned_by_kind: IdentityKindValue
+    assigned_by_id: str = Field(min_length=2, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+
+
+class AgentAssignmentRead(ControlPlaneWrite):
+    id: str
+    agent: IdentityRef
+    mission_id: str
+    assigned_at: str
+    assigned_by: IdentityRef
+    status: Literal["active", "revoked"]
+
+
+class AgentAssignmentList(ControlPlaneWrite):
+    assignments: list[AgentAssignmentRead]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Background tasks (M5 Punto 4 — Execution Plane)
+# ---------------------------------------------------------------------------
+
+class BackgroundTaskCreate(ControlPlaneWrite):
+    task_type: str = Field(min_length=1, max_length=128)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=300, ge=1, le=86400)
+    max_retries: int = Field(default=3, ge=0, le=100)
+
+
+class BackgroundTaskStatusUpdate(ControlPlaneWrite):
+    status: Literal["pending", "running", "completed", "cancelled", "failed"]
+    result: dict[str, Any] | None = None
+    error: str | None = Field(default=None, max_length=4000)
+
+
+class BackgroundTaskRead(ControlPlaneWrite):
+    id: str
+    task_type: str
+    payload: dict[str, Any]
+    status: Literal["pending", "running", "completed", "cancelled", "failed"]
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    timeout_seconds: int
+    max_retries: int
+    retry_count: int
+
+
+    reviewed_by: IdentityRef | None = None
+    reviewed_at: str | None = None
+    approval_reason: str | None = None
+
+
+# Rebuild all Pydantic models that use forward references or typing.Any.
+BackgroundTaskCreate.model_rebuild()
+BackgroundTaskStatusUpdate.model_rebuild()
+BackgroundTaskRead.model_rebuild()
+
+
+# ---------------------------------------------------------------------------
+# Evolution Lab patch proposals (M5 Punto 5)
+# ---------------------------------------------------------------------------
+
+class PatchProposalCreate(ControlPlaneWrite):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2000)
+    target_file: str = Field(min_length=1, max_length=500)
+    patch_content: str = Field(min_length=1)
+    proposed_by_kind: IdentityKindValue
+    proposed_by_id: str = Field(min_length=2, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+
+
+class PatchProposalRead(ControlPlaneWrite):
+    id: str
+    title: str
+    description: str
+    target_file: str
+    patch_content: str
+    status: Literal["pending", "approved", "rejected"]
+    proposed_by: IdentityRef
+    proposed_at: str
+    reviewed_by: IdentityRef | None = None
+    reviewed_at: str | None = None
+    approval_reason: str | None = None
+
+
+# Rebuild all Pydantic models that use forward references or typing.Any.
+BackgroundTaskCreate.model_rebuild()
+BackgroundTaskStatusUpdate.model_rebuild()
+BackgroundTaskRead.model_rebuild()
+PatchProposalCreate.model_rebuild()
+PatchProposalRead.model_rebuild()
+
+
+# ---------------------------------------------------------------------------
+# General preferences (M5 Punto 6 — Settings e Network Center)
+# ---------------------------------------------------------------------------
+
+class PreferenceGet(ControlPlaneWrite):
+    key: str
+    value: Any
+    updated_at: str
+
+
+class PreferenceSet(ControlPlaneWrite):
+    value: Any
+
+
+class PreferenceList(ControlPlaneWrite):
+    preferences: list[PreferenceGet]
+
+
+# Rebuild preference models that use typing.Any.
+PreferenceGet.model_rebuild()
+PreferenceSet.model_rebuild()
+PreferenceList.model_rebuild()

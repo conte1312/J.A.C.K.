@@ -139,6 +139,312 @@ class ControlPlaneService:
             offset=offset,
         )
 
+    # ------------------------------------------------------------------
+    # Agent-to-mission assignments (M5 Punto 3)
+    # ------------------------------------------------------------------
+
+    def assign_agent_to_mission(
+        self,
+        *,
+        agent_kind: str,
+        agent_id: str,
+        mission_id: str,
+        assigned_by_kind: str,
+        assigned_by_id: str,
+    ) -> dict[str, Any]:
+        if agent_kind not in _IDENTITY_KINDS:
+            raise ValueError("Agent kind is not valid.")
+        if not _valid_identifier(agent_id):
+            raise ValueError("Agent identifier is not valid.")
+        if not _valid_identifier(mission_id):
+            raise ValueError("Mission identifier is not valid.")
+        if assigned_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Assigner kind is not valid.")
+        if not _valid_identifier(assigned_by_id):
+            raise ValueError("Assigner identifier is not valid.")
+        return self._repository.assign_agent_to_mission(
+            agent_kind=agent_kind,
+            agent_id=agent_id,
+            mission_id=mission_id,
+            assigned_by_kind=assigned_by_kind,
+            assigned_by_id=assigned_by_id,
+        )
+
+    def revoke_agent_from_mission(
+        self,
+        *,
+        assignment_id: str,
+        revoked_by_kind: str,
+        revoked_by_id: str,
+    ) -> dict[str, Any] | None:
+        if not _valid_identifier(assignment_id):
+            raise ValueError("Assignment identifier is not valid.")
+        if revoked_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Revoker kind is not valid.")
+        if not _valid_identifier(revoked_by_id):
+            raise ValueError("Revoker identifier is not valid.")
+        return self._repository.revoke_agent_from_mission(
+            assignment_id=assignment_id,
+            revoked_by_kind=revoked_by_kind,
+            revoked_by_id=revoked_by_id,
+        )
+
+    def get_agent_assignment(
+        self,
+        assignment_id: str,
+    ) -> dict[str, Any] | None:
+        if not _valid_identifier(assignment_id):
+            raise ValueError("Assignment identifier is not valid.")
+        return self._repository.get_agent_assignment(assignment_id)
+
+    def list_agent_assignments(
+        self,
+        *,
+        agent_kind: str | None = None,
+        agent_id: str | None = None,
+        mission_id: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        if agent_kind is not None and agent_kind not in _IDENTITY_KINDS:
+            raise ValueError("Agent kind is not valid.")
+        if agent_id is not None and not _valid_identifier(agent_id):
+            raise ValueError("Agent identifier is not valid.")
+        if mission_id is not None and not _valid_identifier(mission_id):
+            raise ValueError("Mission identifier is not valid.")
+        if status is not None and status not in {"active", "revoked"}:
+            raise ValueError("Assignment status is not valid.")
+        return self._repository.list_agent_assignments(
+            agent_kind=agent_kind,
+            agent_id=agent_id,
+            mission_id=mission_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+    # ------------------------------------------------------------------
+    # Background tasks (M5 Punto 4 — Execution Plane)
+    # ------------------------------------------------------------------
+
+    def create_background_task(
+        self,
+        *,
+        task_type: str,
+        payload: dict[str, Any],
+        timeout_seconds: int = 300,
+        max_retries: int = 3,
+    ) -> dict[str, Any]:
+        if not task_type or not task_type.strip():
+            raise ValueError("Task type is required.")
+        if timeout_seconds < 1 or timeout_seconds > 86400:
+            raise ValueError("Timeout must be between 1 and 86400 seconds.")
+        if max_retries < 0 or max_retries > 100:
+            raise ValueError("Max retries must be between 0 and 100.")
+        return self._repository.create_background_task(
+            task_type=task_type,
+            payload=payload,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+
+    def get_background_task(self, task_id: str) -> dict[str, Any] | None:
+        if not _valid_identifier(task_id):
+            raise ValueError("Task identifier is not valid.")
+        return self._repository.get_background_task(task_id)
+
+    def list_background_tasks(
+        self,
+        *,
+        task_type: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        if status is not None and status not in {
+            "pending", "running", "completed", "cancelled", "failed"
+        }:
+            raise ValueError("Task status is not valid.")
+        return self._repository.list_background_tasks(
+            task_type=task_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+    def update_background_task_status(
+        self,
+        *,
+        task_id: str,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not _valid_identifier(task_id):
+            raise ValueError("Task identifier is not valid.")
+        return self._repository.update_background_task_status(
+            task_id=task_id,
+            status=status,
+            result=result,
+            error=error,
+        )
+
+    def cancel_background_task(self, task_id: str) -> dict[str, Any] | None:
+        if not _valid_identifier(task_id):
+            raise ValueError("Task identifier is not valid.")
+        return self._repository.cancel_background_task(task_id=task_id)
+
+    def list_overdue_tasks(self) -> list[dict[str, Any]]:
+        return self._repository.list_overdue_tasks()
+
+    def increment_retry_count(self, task_id: str) -> dict[str, Any] | None:
+        if not _valid_identifier(task_id):
+            raise ValueError("Task identifier is not valid.")
+        return self._repository.increment_retry_count(task_id=task_id)
+
+    # ------------------------------------------------------------------
+    # Evolution Lab patch proposals (M5 Punto 5)
+    # ------------------------------------------------------------------
+
+    def create_patch_proposal(
+        self,
+        *,
+        title: str,
+        description: str,
+        target_file: str,
+        patch_content: str,
+        proposed_by_kind: str,
+        proposed_by_id: str,
+    ) -> dict[str, Any]:
+        if not title or not title.strip():
+            raise ValueError("Proposal title is required.")
+        if not description or not description.strip():
+            raise ValueError("Proposal description is required.")
+        if not target_file or not target_file.strip():
+            raise ValueError("Target file is required.")
+        if not patch_content or not patch_content.strip():
+            raise ValueError("Patch content is required.")
+        if proposed_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Proposer kind is not valid.")
+        if not _valid_identifier(proposed_by_id):
+            raise ValueError("Proposer identifier is not valid.")
+        return self._repository.create_patch_proposal(
+            title=title.strip(),
+            description=description.strip(),
+            target_file=target_file.strip(),
+            patch_content=patch_content,
+            proposed_by_kind=proposed_by_kind,
+            proposed_by_id=proposed_by_id,
+        )
+
+    def get_patch_proposal(self, proposal_id: str) -> dict[str, Any] | None:
+        if not _valid_identifier(proposal_id):
+            raise ValueError("Proposal identifier is not valid.")
+        return self._repository.get_patch_proposal(proposal_id)
+
+    def list_patch_proposals(
+        self,
+        *,
+        status: str | None = None,
+        proposed_by_kind: str | None = None,
+        proposed_by_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        if status is not None and status not in {"pending", "approved", "rejected"}:
+            raise ValueError("Proposal status is not valid.")
+        if proposed_by_kind is not None and proposed_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Proposer kind is not valid.")
+        if proposed_by_id is not None and not _valid_identifier(proposed_by_id):
+            raise ValueError("Proposer identifier is not valid.")
+        return self._repository.list_patch_proposals(
+            status=status,
+            proposed_by_kind=proposed_by_kind,
+            proposed_by_id=proposed_by_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    def approve_patch_proposal(
+        self,
+        *,
+        proposal_id: str,
+        reviewed_by_kind: str,
+        reviewed_by_id: str,
+        approval_reason: str,
+    ) -> dict[str, Any] | None:
+        if not _valid_identifier(proposal_id):
+            raise ValueError("Proposal identifier is not valid.")
+        if reviewed_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Reviewer kind is not valid.")
+        if not _valid_identifier(reviewed_by_id):
+            raise ValueError("Reviewer identifier is not valid.")
+        if not approval_reason or not approval_reason.strip():
+            raise ValueError("Approval reason is required.")
+        return self._repository.approve_patch_proposal(
+            proposal_id=proposal_id,
+            reviewed_by_kind=reviewed_by_kind,
+            reviewed_by_id=reviewed_by_id,
+            approval_reason=approval_reason.strip(),
+        )
+
+    def reject_patch_proposal(
+        self,
+        *,
+        proposal_id: str,
+        reviewed_by_kind: str,
+        reviewed_by_id: str,
+        rejection_reason: str,
+    ) -> dict[str, Any] | None:
+        if not _valid_identifier(proposal_id):
+            raise ValueError("Proposal identifier is not valid.")
+        if reviewed_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Reviewer kind is not valid.")
+        if not _valid_identifier(reviewed_by_id):
+            raise ValueError("Reviewer identifier is not valid.")
+        if not rejection_reason or not rejection_reason.strip():
+            raise ValueError("Rejection reason is required.")
+        return self._repository.reject_patch_proposal(
+            proposal_id=proposal_id,
+            reviewed_by_kind=reviewed_by_kind,
+            reviewed_by_id=reviewed_by_id,
+            rejection_reason=rejection_reason.strip(),
+        )
+
+    # ------------------------------------------------------------------
+    # General preferences (M5 Punto 6 — Settings e Network Center)
+    # ------------------------------------------------------------------
+
+    def get_preference(self, key: str) -> dict[str, Any] | None:
+        if not key or not key.strip():
+            raise ValueError("Preference key is required.")
+        return self._repository.get_preference(key.strip())
+
+    def set_preference(
+        self,
+        *,
+        key: str,
+        value: Any,
+        updated_by_kind: str,
+        updated_by_id: str,
+    ) -> dict[str, Any]:
+        if not key or not key.strip():
+            raise ValueError("Preference key is required.")
+        if updated_by_kind not in _IDENTITY_KINDS:
+            raise ValueError("Updater kind is not valid.")
+        if not _valid_identifier(updated_by_id):
+            raise ValueError("Updater identifier is not valid.")
+        return self._repository.set_preference(
+            key=key.strip(),
+            value=value,
+            updated_by_kind=updated_by_kind,
+            updated_by_id=updated_by_id,
+        )
+
+    def list_preferences(self) -> list[dict[str, Any]]:
+        return self._repository.list_preferences()
+
 
 def _valid_identifier(value: Any) -> bool:
     return isinstance(value, str) and _IDENTIFIER.fullmatch(value) is not None
