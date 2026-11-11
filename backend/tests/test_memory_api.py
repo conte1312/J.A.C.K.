@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import socket
 import stat
 import subprocess
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -192,6 +194,329 @@ class MemoryApiTests(unittest.TestCase):
             status_code, body = self._request("POST", "/api/v1/memories", invalid)
             self.assertEqual(status_code, 422)
             self.assertEqual(body["detail"], "Invalid request data")
+
+    def test_inferred_memories_cannot_bypass_approval_endpoints(self) -> None:
+        proposed = {
+            "title": "Unapproved proposal",
+            "content": "This memory must not be persisted.",
+            "category": "other",
+            "source_type": "inference",
+            "verification": "inferred",
+        }
+
+        for path, body in (
+            ("/api/v1/memories", proposed),
+            ("/api/v2/memories", proposed),
+            ("/api/v2/memories/import", [proposed]),
+        ):
+            status_code, response = self._request("POST", path, body)
+            self.assertEqual(status_code, 422, path)
+            self.assertEqual(response["detail"], "Invalid request data")
+
+        _, created = self._request(
+            "POST",
+            "/api/v2/memories",
+            {
+                "title": "Approved memory fixture",
+                "content": "A user-created memory.",
+                "category": "other",
+            },
+        )
+        status_code, response = self._request(
+            "PUT",
+            f"/api/v2/memories/{created['id']}",
+            {
+                "title": "Unapproved update",
+                "content": "This update must not persist.",
+                "category": "other",
+                "verification": "inferred",
+            },
+        )
+        self.assertEqual(status_code, 422)
+        self.assertEqual(response["detail"], "Invalid request data")
+        status_code, current = self._request(
+            "GET", f"/api/v2/memories/{created['id']}"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(current["title"], "Approved memory fixture")
+
+    def test_proposal_approval_rejection_and_audit(self) -> None:
+        payload = {
+            "title": "Proposal requiring approval",
+            "content": "Persist only after approval.",
+            "category": "work",
+        }
+        status_code, proposal = self._request(
+            "POST", "/api/v2/memories/proposals", payload
+        )
+        self.assertEqual(status_code, 201)
+        self.assertEqual(proposal["status"], "pending")
+        self.assertEqual(proposal["source_type"], "inference")
+        self.assertEqual(proposal["verification"], "inferred")
+        self.assertEqual(
+            datetime.fromisoformat(proposal["expires_at"].replace("Z", "+00:00"))
+            - datetime.fromisoformat(proposal["created_at"].replace("Z", "+00:00")),
+            timedelta(hours=24),
+        )
+
+        status_code, proposals = self._request(
+            "GET", "/api/v2/memories/proposals?status=pending"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertIn(proposal["id"], {item["id"] for item in proposals})
+        status_code, stored_proposal = self._request(
+            "GET", f"/api/v2/memories/proposals/{proposal['id']}"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(stored_proposal["status"], "pending")
+        status_code, memories = self._request("GET", "/api/v2/memories")
+        self.assertEqual(status_code, 200)
+        self.assertNotIn(proposal["id"], {item["id"] for item in memories})
+
+        status_code, approved = self._request(
+            "POST", f"/api/v2/memories/proposals/{proposal['id']}/approve"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(approved["title"], payload["title"])
+        self.assertEqual(approved["source_type"], "saved")
+        self.assertEqual(approved["verification"], "verified")
+        status_code, duplicate_approval = self._request(
+            "POST", f"/api/v2/memories/proposals/{proposal['id']}/approve"
+        )
+        self.assertEqual(status_code, 409)
+        self.assertEqual(
+            duplicate_approval["detail"],
+            "Memory proposal cannot be approved: approved",
+        )
+
+        status_code, rejected_proposal = self._request(
+            "POST",
+            "/api/v2/memories/proposals",
+            {
+                "title": "Proposal to reject",
+                "content": "Must never become a memory.",
+                "category": "other",
+            },
+        )
+        self.assertEqual(status_code, 201)
+        status_code, rejected = self._request(
+            "POST",
+            f"/api/v2/memories/proposals/{rejected_proposal['id']}/reject",
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(rejected["status"], "rejected")
+        status_code, duplicate_rejection = self._request(
+            "POST",
+            f"/api/v2/memories/proposals/{rejected_proposal['id']}/reject",
+        )
+        self.assertEqual(status_code, 409)
+        self.assertEqual(
+            duplicate_rejection["detail"],
+            "Memory proposal cannot be rejected: rejected",
+        )
+        status_code, memories = self._request("GET", "/api/v2/memories")
+        self.assertEqual(status_code, 200)
+        self.assertNotIn(
+            rejected_proposal["id"], {item["id"] for item in memories}
+        )
+
+        status_code, audit = self._request("GET", "/api/v2/memories/audit")
+        self.assertEqual(status_code, 200)
+        actions = {entry["action"] for entry in audit}
+        self.assertTrue(
+            {"proposal.created", "proposal.approved", "proposal.rejected"}
+            .issubset(actions)
+        )
+        self.assertTrue(
+            all(
+                "content" not in entry and "title" not in entry
+                for entry in audit
+            )
+        )
+
+    def test_expired_proposal_cannot_be_approved_and_is_audited(self) -> None:
+        status_code, proposal = self._request(
+            "POST",
+            "/api/v2/memories/proposals",
+            {
+                "title": "Expired proposal",
+                "content": "This has passed its approval window.",
+                "category": "other",
+            },
+        )
+        self.assertEqual(status_code, 201)
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                "UPDATE memory_proposals SET expires_at = ? WHERE id = ?",
+                ("2000-01-01T00:00:00.000Z", proposal["id"]),
+            )
+
+        status_code, expired = self._request(
+            "GET", f"/api/v2/memories/proposals/{proposal['id']}"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(expired["status"], "expired")
+        status_code, response = self._request(
+            "POST", f"/api/v2/memories/proposals/{proposal['id']}/approve"
+        )
+        self.assertEqual(status_code, 409)
+        self.assertIn("expired", response["detail"])
+        status_code, memories = self._request("GET", "/api/v2/memories")
+        self.assertEqual(status_code, 200)
+        self.assertNotIn(proposal["id"], {item["id"] for item in memories})
+        status_code, audit = self._request(
+            "GET", "/api/v2/memories/audit?action=proposal.expired"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertTrue(any(item["proposal_id"] == proposal["id"] for item in audit))
+
+    def test_v2_memory_endpoints_are_reachable(self) -> None:
+        status_code, first = self._request(
+            "POST",
+            "/api/v2/memories",
+            {
+                "title": "V2 first memory",
+                "content": "Searchable v2 record.",
+                "category": "work",
+                "tags": ["jack"],
+            },
+        )
+        self.assertEqual(status_code, 201)
+        status_code, second = self._request(
+            "POST",
+            "/api/v2/memories",
+            {
+                "title": "V2 second memory",
+                "content": "A related record.",
+                "category": "projects",
+            },
+        )
+        self.assertEqual(status_code, 201)
+
+        for path in (
+            "/api/v2/memories",
+            "/api/v2/memories?category=work&provenance=saved&verification=to_verify",
+            "/api/v2/memories/search?q=Searchable",
+            "/api/v2/memories/filter/category?category=work",
+            "/api/v2/memories/filter/verification?verification=to_verify",
+            "/api/v2/memories/filter/tag?tag=jack",
+            "/api/v2/memories/graph?category=work",
+            "/api/v2/memories/links",
+            "/api/v2/memories/audit",
+        ):
+            status_code, _ = self._request("GET", path)
+            self.assertEqual(status_code, 200, path)
+
+        link_payload = {
+            "from_id": first["id"],
+            "to_id": second["id"],
+            "relation": "related to",
+            "strength": 2,
+        }
+        status_code, link = self._request(
+            "POST", "/api/v2/memories/links", link_payload
+        )
+        self.assertEqual(status_code, 201)
+        for path in (
+            f"/api/v2/memories/links/{link['id']}",
+            f"/api/v2/memories/links?memory_id={first['id']}",
+            "/api/v2/memories/graph",
+        ):
+            status_code, _ = self._request("GET", path)
+            self.assertEqual(status_code, 200, path)
+        status_code, updated_link = self._request(
+            "PUT",
+            f"/api/v2/memories/links/{link['id']}",
+            {**link_payload, "relation": "depends on", "strength": 3},
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(updated_link["relation"], "depends on")
+        status_code, _ = self._request(
+            "DELETE", f"/api/v2/memories/links/{link['id']}"
+        )
+        self.assertEqual(status_code, 204)
+
+        status_code, updated = self._request(
+            "PUT",
+            f"/api/v2/memories/{first['id']}",
+            {
+                "title": "V2 updated memory",
+                "content": "Searchable v2 record.",
+                "category": "work",
+                "tags": ["jack"],
+            },
+        )
+        self.assertEqual(status_code, 200)
+        status_code, excluded = self._request(
+            "PUT",
+            f"/api/v2/memories/{first['id']}/exclusion",
+            {"excluded": True},
+        )
+        self.assertEqual(status_code, 200)
+        self.assertTrue(excluded["excluded"])
+        status_code, used = self._request(
+            "PUT", f"/api/v2/memories/{first['id']}/last-used"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertTrue(used["last_used"])
+        status_code, detail = self._request(
+            "GET", f"/api/v2/memories/{first['id']}"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(detail["title"], updated["title"])
+        status_code, audit = self._request(
+            "GET", f"/api/v2/memories/audit?memory_id={first['id']}"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertTrue(any(entry["action"] == "memory.used" for entry in audit))
+
+        status_code, imported = self._request(
+            "POST",
+            "/api/v2/memories/import",
+            [
+                {
+                    "title": "V2 imported memory",
+                    "content": "Imported via the v2 route.",
+                    "category": "other",
+                }
+            ],
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(len(imported), 1)
+        status_code, _ = self._request(
+            "DELETE", f"/api/v2/memories/{first['id']}"
+        )
+        self.assertEqual(status_code, 204)
+
+    def test_audit_log_is_immutable(self) -> None:
+        status_code, created = self._request(
+            "POST",
+            "/api/v1/memories",
+            {
+                "title": "Audited memory",
+                "content": "Audit events must not be changed.",
+                "category": "other",
+            },
+        )
+        self.assertEqual(status_code, 201)
+        with sqlite3.connect(self.database_path) as connection:
+            audit_id = connection.execute(
+                "SELECT id FROM memory_audit_log WHERE memory_id = ? LIMIT 1",
+                (created["id"],),
+            ).fetchone()[0]
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+            with sqlite3.connect(self.database_path) as connection:
+                connection.execute(
+                    "UPDATE memory_audit_log SET action = 'tampered' WHERE id = ?",
+                    (audit_id,),
+                )
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+            with sqlite3.connect(self.database_path) as connection:
+                connection.execute(
+                    "DELETE FROM memory_audit_log WHERE id = ?",
+                    (audit_id,),
+                )
 
     def test_exclusion_last_used_and_graph_filters(self) -> None:
         _, first = self._request(
@@ -377,6 +702,16 @@ class MemoryApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(status_code, 201)
+        proposal_status, proposal = self._request(
+            "POST",
+            "/api/v2/memories/proposals",
+            {
+                "title": "Persistent proposal",
+                "content": "Proposal remains pending after restart.",
+                "category": "projects",
+            },
+        )
+        self.assertEqual(proposal_status, 201)
 
         self._stop_server()
         self._start_server()
@@ -387,6 +722,16 @@ class MemoryApiTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertEqual(restored["title"], "Persistenza locale")
         self.assertEqual(restored["content"], created["content"])
+        proposal_status, restored_proposal = self._request(
+            "GET", f"/api/v2/memories/proposals/{proposal['id']}"
+        )
+        self.assertEqual(proposal_status, 200)
+        self.assertEqual(restored_proposal["status"], "pending")
+        proposal_status, approved = self._request(
+            "POST", f"/api/v2/memories/proposals/{proposal['id']}/approve"
+        )
+        self.assertEqual(proposal_status, 200)
+        self.assertEqual(approved["title"], "Persistent proposal")
 
     def _start_server(self) -> None:
         environment = os.environ.copy()
@@ -446,7 +791,7 @@ class MemoryApiTests(unittest.TestCase):
         self,
         method: str,
         path: str,
-        payload: dict[str, object] | None = None,
+        payload: object | None = None,
         *,
         timeout: float = 3,
     ) -> tuple[int, object]:

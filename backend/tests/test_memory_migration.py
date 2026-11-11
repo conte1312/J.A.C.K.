@@ -46,7 +46,7 @@ class MemoryMigrationTests(unittest.TestCase):
             self.assertEqual(record["updated_at"], "2025-01-02T03:04:05Z")
 
         with sqlite3.connect(self.database_path) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
             self.assertEqual(
                 connection.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
                 5,
@@ -72,9 +72,7 @@ class MemoryMigrationTests(unittest.TestCase):
                     """
                 )
 
-        backup_path = self.database_path.with_name(
-            "memories.sqlite3.pre-v2.bak"
-        )
+        backup_path = self.database_path.with_name("memories.sqlite3.pre-v3.bak")
         self.assertTrue(backup_path.exists())
         if stat.S_IMODE(backup_path.stat().st_mode) != 0o600:
             self.fail("Migration backup permissions must be private.")
@@ -113,7 +111,47 @@ class MemoryMigrationTests(unittest.TestCase):
             )
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 0)
         self.assertTrue(
-            self.database_path.with_name("memories.sqlite3.pre-v2.bak").exists()
+            self.database_path.with_name("memories.sqlite3.pre-v3.bak").exists()
+        )
+
+    def test_v2_migration_preserves_memories_and_relations(self) -> None:
+        repository = MemoryRepository(self.database_path)
+        repository.initialize()
+        first = repository.create(
+            title="First memory",
+            content="First content",
+            category="work",
+        )
+        second = repository.create(
+            title="Second memory",
+            content="Second content",
+            category="projects",
+        )
+        link = repository.create_link(
+            from_id=str(first["id"]),
+            to_id=str(second["id"]),
+            relation="supports",
+            strength=2,
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute("DROP TABLE memory_audit_log")
+            connection.execute("DROP TABLE memory_proposals")
+            connection.execute("PRAGMA user_version = 2")
+
+        repository.initialize()
+
+        self.assertEqual(
+            {str(memory["id"]) for memory in repository.list()},
+            {str(first["id"]), str(second["id"])},
+        )
+        self.assertEqual(
+            [edge["id"] for edge in repository.list_links()],
+            [link["id"]],
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertTrue(
+            self.database_path.with_name("memories.sqlite3.pre-v3.bak").exists()
         )
 
     def _create_legacy_database(self) -> None:

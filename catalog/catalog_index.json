@@ -1,0 +1,14 @@
+{
+  "catalog": {
+    "source_repository": "msitarzewski/agency-agents",
+    "source_revision": "b859c515d813efcfc4755d3471dd9e7686c7706d",
+    "source_url": "https://github.com/msitarzewski/agency-agents",
+    "license": "MIT",
+    "import_date": "2026-11-08",
+    "import_mode": "ALL",
+    "description": "Catalogo completo degli agenti agency-agents integrato in J.A.C.K. 2.0"
+  },
+  "divisions": [],
+  "agents": [],
+  "note": "Indice da popolare in M6 con l'importazione completa del catalogo."
+}
